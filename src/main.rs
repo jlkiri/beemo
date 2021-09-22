@@ -22,14 +22,18 @@ pub enum Token {
 
 struct Scanner<'s> {
     source: &'s str,
-    current_indentation: isize
+    current_indentation: isize,
 }
 
-fn line<'a, F: 'a>(inner: F) -> impl FnMut(&'a str) -> Result<(Vec<char>, &'a str)>
+fn line<'a, F1: 'a, F2: 'a>(
+    before: F1,
+    after: F2,
+) -> impl FnMut(&'a str) -> Result<(Vec<Token>, Vec<Token>)>
 where
-    F: Fn(&'a str) -> Result<&'a str>,
+    F1: Fn(&'a str) -> Result<Vec<Token>>,
+    F2: FnMut(&'a str) -> Result<Vec<Token>>,
 {
-    pair(many0(tab), terminated(inner, newline))
+    pair(before, terminated(after, newline))
 }
 
 impl<'s> Scanner<'s> {
@@ -45,9 +49,9 @@ impl<'s> Scanner<'s> {
         })(input)
     }
 
-    fn indendation(&mut self, input: &'s str) -> Result<Vec<Token>> {
+    fn indentation(&mut self, input: &'s str) -> Result<Vec<Token>> {
         let (rest, tabs) = many0(tab)(input)?;
-        let indentation_tokens: Vec<Token> = tabs.into_iter().map(|t| Token::Indent).collect();
+        let indentation_tokens: Vec<Token> = tabs.into_iter().map(|_| Token::Indent).collect();
         let parsed_indent = indentation_tokens.len() as isize;
         if parsed_indent < self.current_indentation {
             for _ in 0..self.current_indentation - parsed_indent {
@@ -60,21 +64,41 @@ impl<'s> Scanner<'s> {
     }
 
     fn scan(&self) -> Result<Vec<Token>> {
-        let line = pair(, terminated(inner, newline));
+        let indendation = |i| self.indentation(i);
         let keyword = |i| self.keyword(i);
         let identifier = |i| self.identifier(i);
-        let (input, tokens) = many0(alt((
+        let after_indent = |i: &str| {
+            many0(alt((
+                keyword,
+                identifier,
+                map(tag(":"), |_| Token::Colon),
+                map(tag("("), |_| Token::OpeningParen),
+                map(tag(")"), |_| Token::ClosingParen),
+            )))(i)
+        };
+        let full_line = map(
+            pair(indendation, terminated(after_indent, newline)),
+            |p: (Vec<Token>, Vec<Token>)| {
+                p.0.append(&mut p.1);
+                p.0
+            },
+        );
+        /*let (input, tokens) = many0(alt((
             keyword,
             identifier,
             map(tag(":"), |_| Token::Colon),
             map(tag("("), |_| Token::OpeningParen),
             map(tag(")"), |_| Token::ClosingParen),
-        )))(self.source)?;
-        Ok((input, tokens))
+        ))); */
+        let (input, b): (&str, Vec<Vec<Token>>) = many0(full_line)(self.source)?;
+        Ok((input, b.into_iter().flatten().collect()))
     }
 
     pub fn new(source: &'s str) -> Self {
-        Self { source, current_indentation: 0 }
+        Self {
+            source,
+            current_indentation: 0,
+        }
     }
 }
 
