@@ -23,6 +23,9 @@ use nom::sequence::{delimited, pair, preceded, terminated};
 use nom::Err::Failure;
 use nom::{self};
 
+mod parser;
+use parser::*;
+
 pub type Result<'a, T> = nom::IResult<&'a str, T, BeemoError<&'a str>>;
 pub type Error = Box<dyn std::error::Error>;
 
@@ -152,16 +155,10 @@ fn tokens(input: &str) -> Result<Vec<Token>> {
     Ok((input, tokens))
 }
 
-#[derive(Debug)]
-enum ScanResult {
-    Success(Vec<Token>),
-    Failure,
-}
-
 fn scan_lines(
     source: &str,
     counter: &mut IndentationCounter,
-) -> std::result::Result<ScanResult, Error> {
+) -> std::result::Result<Vec<Token>, Error> {
     let indent = |i| indentation(i, counter);
     let full_line = map(
         // pair(indent, terminated(after_indent, line_ending)),
@@ -172,43 +169,31 @@ fn scan_lines(
         },
     );
     let (_, (parsed_lines, _)) = many_till(full_line, eof)(source).expect("handle errors properly");
-    Ok(ScanResult::Success(
-        parsed_lines.into_iter().flatten().collect(),
-    ))
+    Ok(parsed_lines.into_iter().flatten().collect())
 }
 
 fn scan(source: &str) -> std::result::Result<Vec<Token>, Error> {
     let mut c = IndentationCounter { current: 0 };
-    let scan_result = scan_lines(&source, &mut c)?;
+    let scan_result = scan_lines(&source, &mut c);
     dbg!(&c);
     match scan_result {
-        ScanResult::Success(mut tokens) => {
+        Ok(mut tokens) => {
+            // Dedent last line manually because parser does not get a chance to apply.
             for _ in 0..c.current {
                 tokens.push(Token::Dedent);
             }
             Ok(tokens)
         }
-        ScanResult::Failure => Err("fail".into()),
+        _ => Err("fail".into()),
     }
-}
-
-fn space_alph(s: &str) -> Result<&str> {
-    match alpha1(s) {
-        Ok(r) => Ok(r),
-        Err(nom::Err::Error(_)) => Err(Failure(BeemoError::custom(s, "Bad identifier".into()))),
-        Err(e) => Err(e),
-    }
-}
-
-fn parse_test(s: &str) -> Result<Vec<&str>> {
-    let (input, res) = many0(preceded(space0, space_alph))(s)?;
-    let (input, _) = context("bad identifier", line_ending)(input)?;
-    Ok((input, res))
 }
 
 fn main() {
     // As of now, final newline is REQUIRED.
     let source = include_str!("../test.bmo");
-    dbg!(scan(&source));
+    let tokens = scan(&source).unwrap();
+    let parser = Parser::new(tokens);
+    let res = parser.parse().unwrap();
+    dbg!();
     ()
 }
