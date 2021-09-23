@@ -49,17 +49,17 @@ fn indentation<'a>(
     counter: &mut IndentationCounter,
 ) -> nom::IResult<&'a str, Vec<Token>> {
     let (rest, tabs) = many0(tab)(input)?;
-    let mut indentation_tokens: Vec<Token> = tabs.into_iter().map(|_| Token::Indent).collect();
-    let indent_level = indentation_tokens.len() as isize;
+    let mut indent_tokens = tabs.into_iter().map(|_| Token::Indent).collect::<Vec<_>>();
+    let indent_level = indent_tokens.len() as isize;
     if indent_level < counter.current {
         for _ in 0..counter.current - indent_level {
-            indentation_tokens.push(Token::Dedent);
+            indent_tokens.push(Token::Dedent);
         }
     }
-    indentation_tokens.reverse();
+    indent_tokens.reverse();
     counter.remainder = counter.current;
     counter.current = indent_level;
-    Ok((rest, indentation_tokens))
+    Ok((rest, indent_tokens))
 }
 
 fn after_indent(input: &str) -> nom::IResult<&str, Vec<Token>> {
