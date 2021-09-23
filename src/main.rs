@@ -1,13 +1,16 @@
+use std::convert::Infallible;
+
 use nom;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::character::complete::{alpha1, alphanumeric0, multispace0, newline as lf, tab};
 use nom::character::complete::{crlf, space0};
-use nom::combinator::{map, opt, recognize, value};
+use nom::combinator::{map, map_res, opt, recognize, value};
 use nom::multi::{many0, many1};
 use nom::sequence::{delimited, pair, preceded, terminated};
 
 pub type Result<'a, T> = nom::IResult<&'a str, T>;
+pub type Error = Box<dyn std::error::Error>;
 
 #[derive(Debug)]
 pub enum Token {
@@ -23,8 +26,10 @@ pub enum Token {
     Eof,
 }
 
+#[derive(Debug)]
 struct IndentationCounter {
-    current_indentation: isize,
+    current: isize,
+    remainder: isize,
 }
 
 fn keyword(input: &str) -> Result<Token> {
@@ -44,21 +49,22 @@ fn indentation<'a>(
     counter: &mut IndentationCounter,
 ) -> nom::IResult<&'a str, Vec<Token>> {
     let (rest, tabs) = many0(tab)(input)?;
-    dbg!(rest);
+    dbg!("PARSE INDENTATION");
     let mut indentation_tokens: Vec<Token> = tabs.into_iter().map(|_| Token::Indent).collect();
     let parsed_indent = indentation_tokens.len() as isize;
-    if parsed_indent < counter.current_indentation {
-        for _ in 0..counter.current_indentation - parsed_indent {
+    if parsed_indent < counter.current {
+        for _ in 0..counter.current - parsed_indent {
             indentation_tokens.push(Token::Dedent);
         }
     }
     indentation_tokens.reverse();
-    counter.current_indentation = parsed_indent;
+    counter.remainder = counter.current;
+    counter.current = parsed_indent;
     Ok((rest, indentation_tokens))
 }
 
 fn after_indent(input: &str) -> nom::IResult<&str, Vec<Token>> {
-    many0(preceded(
+    many1(preceded(
         space0,
         alt((
             keyword,
@@ -76,25 +82,48 @@ fn newline(input: &str) -> nom::IResult<&str, Vec<&str>> {
     many1(alt((value("", lf), crlf)))(input)
 }
 
-fn scan(source: &str) -> Result<Vec<Token>> {
-    let mut c = IndentationCounter {
-        current_indentation: 0,
-    };
-    let indent = |i| indentation(i, &mut c);
+#[derive(Debug)]
+enum ScanResult {
+    Success(Vec<Token>),
+    Failure,
+}
+
+fn scan_lines(
+    source: &str,
+    counter: &mut IndentationCounter,
+) -> std::result::Result<ScanResult, Error> {
+    let indent = |i| indentation(i, counter);
     // let after_indent = ;
-    let full_line = map(pair(indent, terminated(after_indent, newline)), |mut p| {
-        dbg!(&p.1);
+    let mut full_line = map(pair(indent, terminated(after_indent, newline)), |mut p| {
         p.0.append(&mut p.1);
         p.0
     });
-    let (input, lines) = many0(full_line)(source)?;
-    Ok((input, lines.into_iter().flatten().collect()))
+    let (rest, parsed_lines) = many0(full_line)(source).expect("fail");
+    Ok(ScanResult::Success(
+        parsed_lines.into_iter().flatten().collect(),
+    ))
+}
+
+fn scan(source: &str) -> std::result::Result<Vec<Token>, Error> {
+    let mut c = IndentationCounter {
+        remainder: 0,
+        current: 0,
+    };
+    let scan_result = scan_lines(&source, &mut c)?;
+    match scan_result {
+        ScanResult::Success(mut tokens) => {
+            for _ in 0..c.remainder {
+                tokens.push(Token::Dedent);
+            }
+            Ok(tokens)
+        }
+        ScanResult::Failure => Err("fail".into()),
+    }
 }
 
 fn main() {
+    // As of now, final newline is REQUIRED.
     let source = include_str!("../test.bmo");
-    let s = "def func(a, b):\n\treturn a + b\r\n\r\ndef func2(c, d):\r\n\treturn c * d\r\n";
-    dbg!(&source);
     dbg!(scan(&source));
     ()
 }
