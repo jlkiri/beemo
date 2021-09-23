@@ -49,17 +49,16 @@ fn indentation<'a>(
     counter: &mut IndentationCounter,
 ) -> nom::IResult<&'a str, Vec<Token>> {
     let (rest, tabs) = many0(tab)(input)?;
-    dbg!("PARSE INDENTATION");
     let mut indentation_tokens: Vec<Token> = tabs.into_iter().map(|_| Token::Indent).collect();
-    let parsed_indent = indentation_tokens.len() as isize;
-    if parsed_indent < counter.current {
-        for _ in 0..counter.current - parsed_indent {
+    let indent_level = indentation_tokens.len() as isize;
+    if indent_level < counter.current {
+        for _ in 0..counter.current - indent_level {
             indentation_tokens.push(Token::Dedent);
         }
     }
     indentation_tokens.reverse();
     counter.remainder = counter.current;
-    counter.current = parsed_indent;
+    counter.current = indent_level;
     Ok((rest, indentation_tokens))
 }
 
