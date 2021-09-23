@@ -1,20 +1,75 @@
 use std::convert::Infallible;
 
-use nom;
 use nom::branch::alt;
 use nom::bytes::complete::tag;
+use nom::bytes::complete::take;
+use nom::bytes::complete::take_while;
+use nom::character::complete::alpha0;
+use nom::character::complete::line_ending;
+use nom::character::complete::space1;
 use nom::character::complete::{alpha1, alphanumeric0, multispace0, newline as lf, tab};
 use nom::character::complete::{crlf, space0};
+use nom::character::is_alphabetic;
 use nom::combinator::{map, map_res, opt, recognize, value};
+use nom::error::{context, ContextError, ErrorKind as NomErrorKind, ParseError};
 use nom::multi::{many0, many1};
 use nom::number::complete::f64;
 use nom::number::complete::float;
+use nom::sequence::tuple;
 use nom::sequence::{delimited, pair, preceded, terminated};
+use nom::Err::Failure;
+use nom::{self};
 
-pub type Result<'a, T> = nom::IResult<&'a str, T>;
+pub type Result<'a, T> = nom::IResult<&'a str, T, BeemoError<&'a str>>;
 pub type Error = Box<dyn std::error::Error>;
 
 #[derive(Debug)]
+pub enum ErrorKind {
+    Nom(NomErrorKind),
+    Context(&'static str),
+    Custom(String),
+}
+
+#[derive(Debug)]
+pub struct BeemoError<I> {
+    pub errors: Vec<(I, ErrorKind)>,
+}
+
+impl<I> ParseError<I> for BeemoError<I> {
+    fn from_error_kind(input: I, kind: NomErrorKind) -> Self {
+        Self {
+            errors: vec![(input, ErrorKind::Nom(kind))],
+        }
+    }
+
+    fn append(input: I, kind: NomErrorKind, mut other: Self) -> Self {
+        other.errors.push((input, ErrorKind::Nom(kind)));
+        other
+    }
+
+    fn from_char(input: I, c: char) -> Self {
+        Self {
+            errors: vec![(input, ErrorKind::Context("char"))],
+        }
+    }
+}
+
+impl<I> BeemoError<I> {
+    pub fn custom(input: I, msg: String) -> Self {
+        Self {
+            errors: vec![(input, ErrorKind::Custom(msg))],
+        }
+    }
+}
+
+impl<I> ContextError<I> for BeemoError<I> {
+    fn add_context(input: I, ctx: &'static str, mut other: Self) -> Self {
+        other.errors.push((input, ErrorKind::Context(ctx)));
+        other
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum Token {
     Identifier(String),
     Keyword(String),
@@ -43,15 +98,17 @@ fn keyword(input: &str) -> Result<Token> {
 }
 
 fn identifier(input: &str) -> Result<Token> {
-    map(recognize(pair(alpha1, alphanumeric0)), |s: &str| {
+    match map(recognize(pair(alpha1, alphanumeric0)), |s: &str| {
         Token::Identifier(s.to_string())
     })(input)
+    {
+        Ok((rest, t)) => Ok((rest, t)),
+        Err(nom::Err::Error(_)) => Err(Failure(BeemoError::custom(input, "Bad identifier".into()))),
+        Err(e) => Err(e),
+    }
 }
 
-fn indentation<'a>(
-    input: &'a str,
-    counter: &mut IndentationCounter,
-) -> nom::IResult<&'a str, Vec<Token>> {
+fn indentation<'a>(input: &'a str, counter: &mut IndentationCounter) -> Result<'a, Vec<Token>> {
     let (rest, tabs) = many0(tab)(input)?;
     let mut indent_tokens = tabs.into_iter().map(|_| Token::Indent).collect::<Vec<_>>();
     let indent_level = indent_tokens.len() as isize;
@@ -66,25 +123,21 @@ fn indentation<'a>(
     Ok((rest, indent_tokens))
 }
 
-fn after_indent(input: &str) -> nom::IResult<&str, Vec<Token>> {
-    many1(preceded(
+fn after_indent(input: &str) -> Result<Vec<Token>> {
+    many0(preceded(
         space0,
         alt((
             keyword,
             identifier,
             map(float, |v| Token::Float(v)),
-            map(tag("+"), |_| Token::Plus),
-            map(tag("*"), |_| Token::Multiply),
-            map(tag(":"), |_| Token::Colon),
-            map(tag("("), |_| Token::OpeningParen),
-            map(tag(","), |_| Token::Comma),
-            map(tag(")"), |_| Token::ClosingParen),
+            value(Token::Plus, tag("+")),
+            value(Token::Multiply, tag("*")),
+            value(Token::Colon, tag(":")),
+            value(Token::OpeningParen, tag("(")),
+            value(Token::Comma, tag(",")),
+            value(Token::ClosingParen, tag(")")),
         )),
     ))(input)
-}
-
-fn newline(input: &str) -> nom::IResult<&str, Vec<&str>> {
-    many1(alt((value("", lf), crlf)))(input)
 }
 
 #[derive(Debug)]
@@ -98,10 +151,13 @@ fn scan_lines(
     counter: &mut IndentationCounter,
 ) -> std::result::Result<ScanResult, Error> {
     let indent = |i| indentation(i, counter);
-    let full_line = map(pair(indent, terminated(after_indent, newline)), |mut p| {
-        p.0.append(&mut p.1);
-        p.0
-    });
+    let full_line = map(
+        pair(indent, terminated(after_indent, line_ending)),
+        |(mut pre, mut after)| {
+            pre.append(&mut after);
+            pre
+        },
+    );
     let (_, parsed_lines) = many0(full_line)(source).expect("handle errors properly");
     Ok(ScanResult::Success(
         parsed_lines.into_iter().flatten().collect(),
@@ -123,6 +179,20 @@ fn scan(source: &str) -> std::result::Result<Vec<Token>, Error> {
         }
         ScanResult::Failure => Err("fail".into()),
     }
+}
+
+fn space_alph(s: &str) -> Result<&str> {
+    match alpha1(s) {
+        Ok(r) => Ok(r),
+        Err(nom::Err::Error(_)) => Err(Failure(BeemoError::custom(s, "Bad identifier".into()))),
+        Err(e) => Err(e),
+    }
+}
+
+fn parse_test(s: &str) -> Result<Vec<&str>> {
+    let (input, res) = many0(preceded(space0, space_alph))(s)?;
+    let (input, _) = context("bad identifier", line_ending)(input)?;
+    Ok((input, res))
 }
 
 fn main() {
