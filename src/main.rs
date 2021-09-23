@@ -10,8 +10,11 @@ use nom::character::complete::space1;
 use nom::character::complete::{alpha1, alphanumeric0, multispace0, newline as lf, tab};
 use nom::character::complete::{crlf, space0};
 use nom::character::is_alphabetic;
+use nom::combinator::eof;
+use nom::combinator::not;
 use nom::combinator::{map, map_res, opt, recognize, value};
 use nom::error::{context, ContextError, ErrorKind as NomErrorKind, ParseError};
+use nom::multi::many_till;
 use nom::multi::{many0, many1};
 use nom::number::complete::f64;
 use nom::number::complete::float;
@@ -88,7 +91,6 @@ pub enum Token {
 #[derive(Debug)]
 struct IndentationCounter {
     current: isize,
-    remainder: isize,
 }
 
 fn keyword(input: &str) -> Result<Token> {
@@ -109,6 +111,7 @@ fn identifier(input: &str) -> Result<Token> {
 }
 
 fn indentation<'a>(input: &'a str, counter: &mut IndentationCounter) -> Result<'a, Vec<Token>> {
+    // dbg!("INDENT");
     let (rest, tabs) = many0(tab)(input)?;
     let mut indent_tokens = tabs.into_iter().map(|_| Token::Indent).collect::<Vec<_>>();
     let indent_level = indent_tokens.len() as isize;
@@ -118,26 +121,35 @@ fn indentation<'a>(input: &'a str, counter: &mut IndentationCounter) -> Result<'
         }
     }
     indent_tokens.reverse();
-    counter.remainder = counter.current;
     counter.current = indent_level;
     Ok((rest, indent_tokens))
 }
 
-fn after_indent(input: &str) -> Result<Vec<Token>> {
-    many0(preceded(
-        space0,
-        alt((
-            keyword,
-            identifier,
-            map(float, |v| Token::Float(v)),
-            value(Token::Plus, tag("+")),
-            value(Token::Multiply, tag("*")),
-            value(Token::Colon, tag(":")),
-            value(Token::OpeningParen, tag("(")),
-            value(Token::Comma, tag(",")),
-            value(Token::ClosingParen, tag(")")),
-        )),
-    ))(input)
+fn number(input: &str) -> Result<Token> {
+    // Disallow alphabetic chars explicitly to treat the whole thing as a potential bad identifier.
+    map(terminated(float, not(alpha1)), |v| Token::Float(v))(input)
+}
+
+fn token(input: &str) -> Result<Token> {
+    let (input, token) = alt((
+        keyword,
+        number,
+        value(Token::Plus, tag("+")),
+        value(Token::Multiply, tag("*")),
+        value(Token::Colon, tag(":")),
+        value(Token::OpeningParen, tag("(")),
+        value(Token::Comma, tag(",")),
+        value(Token::ClosingParen, tag(")")),
+        // Test for identifier only if everything else failed.
+        identifier,
+    ))(input)?;
+    Ok((input, token))
+}
+
+fn tokens(input: &str) -> Result<Vec<Token>> {
+    not(eof)(input)?;
+    let (input, (tokens, _)) = many_till(preceded(space0, token), line_ending)(input)?;
+    Ok((input, tokens))
 }
 
 #[derive(Debug)]
@@ -152,27 +164,26 @@ fn scan_lines(
 ) -> std::result::Result<ScanResult, Error> {
     let indent = |i| indentation(i, counter);
     let full_line = map(
-        pair(indent, terminated(after_indent, line_ending)),
+        // pair(indent, terminated(after_indent, line_ending)),
+        pair(indent, tokens),
         |(mut pre, mut after)| {
             pre.append(&mut after);
             pre
         },
     );
-    let (_, parsed_lines) = many0(full_line)(source).expect("handle errors properly");
+    let (_, (parsed_lines, _)) = many_till(full_line, eof)(source).expect("handle errors properly");
     Ok(ScanResult::Success(
         parsed_lines.into_iter().flatten().collect(),
     ))
 }
 
 fn scan(source: &str) -> std::result::Result<Vec<Token>, Error> {
-    let mut c = IndentationCounter {
-        remainder: 0,
-        current: 0,
-    };
+    let mut c = IndentationCounter { current: 0 };
     let scan_result = scan_lines(&source, &mut c)?;
+    dbg!(&c);
     match scan_result {
         ScanResult::Success(mut tokens) => {
-            for _ in 0..c.remainder {
+            for _ in 0..c.current {
                 tokens.push(Token::Dedent);
             }
             Ok(tokens)
