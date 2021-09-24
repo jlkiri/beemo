@@ -29,14 +29,14 @@ use parser::*;
 pub type Result<'a, T> = nom::IResult<&'a str, T, BeemoError<&'a str>>;
 pub type Error = Box<dyn std::error::Error>;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ErrorKind {
     Nom(NomErrorKind),
     Context(&'static str),
     Custom(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct BeemoError<I> {
     pub errors: Vec<(I, ErrorKind)>,
 }
@@ -75,7 +75,7 @@ impl<I> ContextError<I> for BeemoError<I> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Token {
     Identifier(String),
     Keyword(String),
@@ -86,6 +86,8 @@ pub enum Token {
     Comma,
     Indent,
     Dedent,
+    GreaterThan,
+    LessThan,
     OpeningParen,
     ClosingParen,
     Eof,
@@ -97,7 +99,7 @@ struct IndentationCounter {
 }
 
 fn keyword(input: &str) -> Result<Token> {
-    map(alt((tag("def"), tag("return"), tag("if"))), |k: &str| {
+    map(alt((tag("return"), tag("if"))), |k: &str| {
         Token::Keyword(k.to_string())
     })(input)
 }
@@ -143,6 +145,8 @@ fn token(input: &str) -> Result<Token> {
         value(Token::OpeningParen, tag("(")),
         value(Token::Comma, tag(",")),
         value(Token::ClosingParen, tag(")")),
+        value(Token::GreaterThan, tag(">")),
+        value(Token::LessThan, tag("<")),
         // Test for identifier only if everything else failed.
         identifier,
     ))(input)?;
@@ -192,8 +196,61 @@ fn main() {
     // As of now, final newline is REQUIRED.
     let source = include_str!("../test.bmo");
     let tokens = scan(&source).unwrap();
+    dbg!(&tokens);
     let parser = Parser::new(tokens);
     let res = parser.parse().unwrap();
     dbg!();
     ()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    macro_rules! assert_success {
+        ($source:expr, $exp:expr) => {
+            assert_eq!($source, Ok(("", $exp)));
+        };
+    }
+
+    #[test]
+    fn test_float() {
+        assert_success!(number("2"), Token::Float(2.0));
+        assert_success!(number("3.0"), Token::Float(3.0));
+        assert_success!(number("3.0345"), Token::Float(3.0345))
+    }
+
+    #[test]
+    fn test_identifier() {
+        assert_success!(identifier("multiply"), Token::Identifier(String::from("multiply")));
+        assert!(identifier("2multiply").is_err());
+        assert!(identifier("-multiply").is_err());
+    }
+
+    #[test]
+    fn test_keyword() {
+        assert_success!(keyword("if"), Token::Keyword("if".into()));
+        assert_success!(keyword("return"), Token::Keyword("return".into()));
+    }
+
+    #[test]
+    fn test_tokens() {
+        let mut c = IndentationCounter { current: 0 };
+        let source = "a\n\ta\n\t\ta\n\ta\na\n";
+        let res = scan_lines(source, &mut c).unwrap();
+        let ident = Token::Identifier("a".into());
+        assert_eq!(res, vec![
+            Token::Identifier("a".into()),
+            Token::Indent,
+            Token::Identifier("a".into()),
+            Token::Indent,
+            Token::Indent,
+            Token::Identifier("a".into()),
+            Token::Dedent,
+            Token::Indent,
+            Token::Identifier("a".into()),
+            Token::Dedent,
+            Token::Identifier("a".into()),
+        ]);
+    }
 }

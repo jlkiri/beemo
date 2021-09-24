@@ -2,6 +2,8 @@ add(a, b):
 	return a + b
 
 multiply(c, d):
+	if c > d:
+		return d * c
 	return c * d
 
 main:
