@@ -10,6 +10,7 @@ use nom::character::complete::space1;
 use nom::character::complete::{alpha1, alphanumeric0, multispace0, newline as lf, tab};
 use nom::character::complete::{crlf, space0};
 use nom::character::is_alphabetic;
+use nom::combinator::all_consuming;
 use nom::combinator::eof;
 use nom::combinator::not;
 use nom::combinator::{map, map_res, opt, recognize, value};
@@ -21,13 +22,16 @@ use nom::number::complete::float;
 use nom::sequence::tuple;
 use nom::sequence::{delimited, pair, preceded, terminated};
 use nom::Err::Failure;
+use nom::Finish;
 use nom::{self};
+
+use miette::{Diagnostic, SourceSpan};
+use thiserror::Error;
 
 mod parser;
 use parser::*;
 
-pub type Result<'a, T> = nom::IResult<&'a str, T, BeemoError<&'a str>>;
-pub type Error = Box<dyn std::error::Error>;
+pub type Result<'a, T> = nom::IResult<&'a str, T, BeemoScanError<&'a str>>;
 
 #[derive(Debug, PartialEq)]
 pub enum ErrorKind {
@@ -37,11 +41,19 @@ pub enum ErrorKind {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct BeemoError<I> {
+pub struct BeemoScanError<I> {
     pub errors: Vec<(I, ErrorKind)>,
 }
 
-impl<I> ParseError<I> for BeemoError<I> {
+#[derive(Debug, Error)]
+pub enum BeemoError {
+    #[error("Parse error: {0}.")]
+    ParseError(String),
+    #[error("Scan error.")]
+    ScanError(Vec<(String, ErrorKind)>),
+}
+
+impl<I> ParseError<I> for BeemoScanError<I> {
     fn from_error_kind(input: I, kind: NomErrorKind) -> Self {
         Self {
             errors: vec![(input, ErrorKind::Nom(kind))],
@@ -60,7 +72,7 @@ impl<I> ParseError<I> for BeemoError<I> {
     }
 }
 
-impl<I> BeemoError<I> {
+impl<I> BeemoScanError<I> {
     pub fn custom(input: I, msg: String) -> Self {
         Self {
             errors: vec![(input, ErrorKind::Custom(msg))],
@@ -68,7 +80,7 @@ impl<I> BeemoError<I> {
     }
 }
 
-impl<I> ContextError<I> for BeemoError<I> {
+impl<I> ContextError<I> for BeemoScanError<I> {
     fn add_context(input: I, ctx: &'static str, mut other: Self) -> Self {
         other.errors.push((input, ErrorKind::Context(ctx)));
         other
@@ -110,7 +122,10 @@ fn identifier(input: &str) -> Result<Token> {
     })(input)
     {
         Ok((rest, t)) => Ok((rest, t)),
-        Err(nom::Err::Error(_)) => Err(Failure(BeemoError::custom(input, "Bad identifier".into()))),
+        Err(nom::Err::Error(_)) => Err(Failure(BeemoScanError::custom(
+            input,
+            "Bad identifier".into(),
+        ))),
         Err(e) => Err(e),
     }
 }
@@ -118,11 +133,15 @@ fn identifier(input: &str) -> Result<Token> {
 fn indentation<'a>(input: &'a str, counter: &mut IndentationCounter) -> Result<'a, Vec<Token>> {
     // dbg!("INDENT");
     let (rest, tabs) = many0(tab)(input)?;
-    let mut indent_tokens = tabs.into_iter().map(|_| Token::Indent).collect::<Vec<_>>();
-    let indent_level = indent_tokens.len() as isize;
+    let mut indent_tokens = vec![];
+    let indent_level = tabs.len() as isize;
     if indent_level < counter.current {
         for _ in 0..counter.current - indent_level {
             indent_tokens.push(Token::Dedent);
+        }
+    } else if indent_level > counter.current {
+        for _ in 0..indent_level - counter.current {
+            indent_tokens.push(Token::Indent);
         }
     }
     indent_tokens.reverse();
@@ -159,37 +178,37 @@ fn tokens(input: &str) -> Result<Vec<Token>> {
     Ok((input, tokens))
 }
 
-fn scan_lines(
-    source: &str,
+fn scan_lines<'a>(
+    source: &'a str,
     counter: &mut IndentationCounter,
-) -> std::result::Result<Vec<Token>, Error> {
+) -> std::result::Result<Vec<Token>, BeemoError> {
     let indent = |i| indentation(i, counter);
-    let full_line = map(
-        // pair(indent, terminated(after_indent, line_ending)),
-        pair(indent, tokens),
-        |(mut pre, mut after)| {
-            pre.append(&mut after);
-            pre
-        },
-    );
-    let (_, (parsed_lines, _)) = many_till(full_line, eof)(source).expect("handle errors properly");
-    Ok(parsed_lines.into_iter().flatten().collect())
+    let full_line = map(pair(indent, tokens), |(mut pre, mut after)| {
+        pre.append(&mut after);
+        pre
+    });
+
+    all_consuming(many_till(full_line, eof))(source)
+        .finish()
+        .map(|(_, (parsed_lines, _))| parsed_lines.into_iter().flatten().collect())
+        .map_err(|e| {
+            BeemoError::ScanError(
+                e.errors
+                    .into_iter()
+                    .map(|(i, kind)| (i.to_string(), kind))
+                    .collect(),
+            )
+        })
 }
 
-fn scan(source: &str) -> std::result::Result<Vec<Token>, Error> {
+fn scan(source: &str) -> std::result::Result<Vec<Token>, BeemoError> {
     let mut c = IndentationCounter { current: 0 };
-    let scan_result = scan_lines(&source, &mut c);
+    let mut tokens = scan_lines(&source, &mut c)?;
     dbg!(&c);
-    match scan_result {
-        Ok(mut tokens) => {
-            // Dedent last line manually because parser does not get a chance to apply.
-            for _ in 0..c.current {
-                tokens.push(Token::Dedent);
-            }
-            Ok(tokens)
-        }
-        _ => Err("fail".into()),
+    for _ in 0..c.current {
+        tokens.push(Token::Dedent);
     }
+    Ok(tokens)
 }
 
 fn main() {
@@ -222,7 +241,10 @@ mod tests {
 
     #[test]
     fn test_identifier() {
-        assert_success!(identifier("multiply"), Token::Identifier(String::from("multiply")));
+        assert_success!(
+            identifier("multiply"),
+            Token::Identifier(String::from("multiply"))
+        );
         assert!(identifier("2multiply").is_err());
         assert!(identifier("-multiply").is_err());
     }
@@ -234,23 +256,23 @@ mod tests {
     }
 
     #[test]
-    fn test_tokens() {
+    fn test_indentation() {
         let mut c = IndentationCounter { current: 0 };
         let source = "a\n\ta\n\t\ta\n\ta\na\n";
         let res = scan_lines(source, &mut c).unwrap();
-        let ident = Token::Identifier("a".into());
-        assert_eq!(res, vec![
-            Token::Identifier("a".into()),
-            Token::Indent,
-            Token::Identifier("a".into()),
-            Token::Indent,
-            Token::Indent,
-            Token::Identifier("a".into()),
-            Token::Dedent,
-            Token::Indent,
-            Token::Identifier("a".into()),
-            Token::Dedent,
-            Token::Identifier("a".into()),
-        ]);
+        assert_eq!(
+            res,
+            vec![
+                Token::Identifier("a".to_string()),
+                Token::Indent,
+                Token::Identifier("a".to_string()),
+                Token::Indent,
+                Token::Identifier("a".to_string()),
+                Token::Dedent,
+                Token::Identifier("a".to_string()),
+                Token::Dedent,
+                Token::Identifier("a".to_string()),
+            ]
+        );
     }
 }
