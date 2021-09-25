@@ -66,7 +66,7 @@ impl<I> ContextError<I> for BeemoScanError<I> {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Token {
     pub ty: TokenType,
 }
