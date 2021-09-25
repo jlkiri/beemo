@@ -14,7 +14,10 @@ pub struct Parser<'a> {
 struct Declaration;
 
 #[derive(Debug)]
-struct Function;
+pub struct Function {
+    params: Vec<String>,
+    name: String,
+}
 
 enum Stmt {
     Print(String),
@@ -34,25 +37,13 @@ enum Expr {
 pub enum ErrorKind {
     UnexpectedEof,
     UnexpectedToken,
+    MissingClosingBracket,
     Internal,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(tokens: Peekable<Iter<'a, Token>>) -> Self {
         Self { tokens }
-    }
-
-    fn params(&mut self) -> Result<()> {
-        let token = self
-            .tokens
-            .next()
-            .ok_or(BeemoError::ParseError(ErrorKind::UnexpectedEof))?;
-        /*  match token {
-            Token::OpeningParen => {
-                let ps = HashMap::new();
-            }
-        } */
-        Ok(())
     }
 
     fn check(&mut self, ty: &TokenType) -> bool {
@@ -74,6 +65,15 @@ impl<'a> Parser<'a> {
         None
     }
 
+    fn read_token_if_any_of(&mut self, types: &[TokenType]) -> Option<Token> {
+        for ty in types {
+            if self.check(ty) {
+                return self.read_token();
+            }
+        }
+        None
+    }
+
     fn read_token_if_ident(&mut self) -> Option<String> {
         match self.tokens.peek() {
             Some(token) => match &token.ty {
@@ -91,14 +91,35 @@ impl<'a> Parser<'a> {
         self.tokens.peek().copied()
     }
 
+    fn params(&mut self) -> Result<Vec<String>> {
+        let mut parameters = vec![];
+        while {
+            if let Some(token) = self.read_token_if_ident() {
+                dbg!("IDENTIFIER", &token);
+                parameters.push(token);
+            }
+
+            self.read_token_if(&TokenType::Comma).is_some()
+        } {
+            // Do-while loop.
+        }
+        self.read_token_if(&TokenType::ClosingParen)
+            .ok_or(BeemoError::ParseError(ErrorKind::MissingClosingBracket))?;
+        Ok(parameters)
+    }
+
     fn function(&mut self) -> Result<Function> {
-        let token = self
+        let name = self
             .read_token_if_ident()
             .ok_or(BeemoError::ParseError(ErrorKind::UnexpectedToken))?;
 
-        match self.peek_token().map(|t| &t.ty) {
+        match self
+            .read_token_if_any_of(&[TokenType::OpeningParen, TokenType::Colon])
+            .map(|t| t.ty)
+        {
             Some(TokenType::OpeningParen) => {
-                todo!()
+                let params = self.params()?;
+                Ok(Function { params, name })
             }
             Some(TokenType::Colon) => {
                 todo!()
@@ -107,19 +128,12 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn declaration(&mut self) -> Result<Declaration> {
-        /* let token = self
-        .tokens
-        .next()
-        .ok_or(BeemoError::ParseError("eof".into()))?; */
-        self.function()?;
-
-        Ok(Declaration)
+    fn declaration(&mut self) -> Result<Function> {
+        self.function()
     }
 
-    pub fn parse(&mut self) -> Result<()> {
-        self.declaration()?;
-        Ok(())
+    pub fn parse(&mut self) -> Result<Function> {
+        self.declaration()
     }
 }
 
@@ -128,5 +142,5 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_consume() {}
+    fn test_fn() {}
 }
