@@ -12,7 +12,7 @@ fn main() {
     let tokens = scan(&source).unwrap();
     dbg!(&tokens);
     let mut parser = Parser::new(tokens.iter().peekable());
-    // let res = parser.parse().unwrap();
-    dbg!();
+    let res = parser.parse().unwrap();
+    dbg!(res);
     ()
 }

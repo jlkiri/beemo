@@ -1,12 +1,13 @@
 use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;
 
-use crate::ErrorKind;
+use crate::parser;
+use crate::scanner;
 
 #[derive(Debug, Error)]
 pub enum BeemoError {
-    #[error("Parse error: {0}.")]
-    ParseError(String),
+    #[error("Parse error.")]
+    ParseError(parser::ErrorKind),
     #[error("Scan error.")]
-    ScanError(Vec<(String, ErrorKind)>),
+    ScanError(Vec<(String, scanner::ErrorKind)>),
 }

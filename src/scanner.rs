@@ -66,8 +66,13 @@ impl<I> ContextError<I> for BeemoScanError<I> {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub struct Token {
+    pub ty: TokenType,
+}
+
 #[derive(Debug, Clone, PartialEq)]
-pub enum Token {
+pub enum TokenType {
     Identifier(String),
     Keyword(String),
     Float(f32),
@@ -89,15 +94,15 @@ struct IndentationCounter {
     current: isize,
 }
 
-fn keyword(input: &str) -> Result<Token> {
+fn keyword(input: &str) -> Result<TokenType> {
     map(alt((tag("return"), tag("if"))), |k: &str| {
-        Token::Keyword(k.to_string())
+        TokenType::Keyword(k.to_string())
     })(input)
 }
 
-fn identifier(input: &str) -> Result<Token> {
+fn identifier(input: &str) -> Result<TokenType> {
     match map(recognize(pair(alpha1, alphanumeric0)), |s: &str| {
-        Token::Identifier(s.to_string())
+        TokenType::Identifier(s.to_string())
     })(input)
     {
         Ok((rest, t)) => Ok((rest, t)),
@@ -109,18 +114,18 @@ fn identifier(input: &str) -> Result<Token> {
     }
 }
 
-fn indentation<'a>(input: &'a str, counter: &mut IndentationCounter) -> Result<'a, Vec<Token>> {
+fn indentation<'a>(input: &'a str, counter: &mut IndentationCounter) -> Result<'a, Vec<TokenType>> {
     // dbg!("INDENT");
     let (rest, tabs) = many0(tab)(input)?;
     let mut indent_tokens = vec![];
     let indent_level = tabs.len() as isize;
     if indent_level < counter.current {
         for _ in 0..counter.current - indent_level {
-            indent_tokens.push(Token::Dedent);
+            indent_tokens.push(TokenType::Dedent);
         }
     } else if indent_level > counter.current {
         for _ in 0..indent_level - counter.current {
-            indent_tokens.push(Token::Indent);
+            indent_tokens.push(TokenType::Indent);
         }
     }
     indent_tokens.reverse();
@@ -128,30 +133,30 @@ fn indentation<'a>(input: &'a str, counter: &mut IndentationCounter) -> Result<'
     Ok((rest, indent_tokens))
 }
 
-fn number(input: &str) -> Result<Token> {
+fn number(input: &str) -> Result<TokenType> {
     // Disallow alphabetic chars explicitly to treat the whole thing as a potential bad identifier.
-    map(terminated(float, not(alpha1)), |v| Token::Float(v))(input)
+    map(terminated(float, not(alpha1)), |v| TokenType::Float(v))(input)
 }
 
-fn token(input: &str) -> Result<Token> {
+fn token(input: &str) -> Result<TokenType> {
     let (input, token) = alt((
         keyword,
         number,
-        value(Token::Plus, tag("+")),
-        value(Token::Multiply, tag("*")),
-        value(Token::Colon, tag(":")),
-        value(Token::OpeningParen, tag("(")),
-        value(Token::Comma, tag(",")),
-        value(Token::ClosingParen, tag(")")),
-        value(Token::GreaterThan, tag(">")),
-        value(Token::LessThan, tag("<")),
+        value(TokenType::Plus, tag("+")),
+        value(TokenType::Multiply, tag("*")),
+        value(TokenType::Colon, tag(":")),
+        value(TokenType::OpeningParen, tag("(")),
+        value(TokenType::Comma, tag(",")),
+        value(TokenType::ClosingParen, tag(")")),
+        value(TokenType::GreaterThan, tag(">")),
+        value(TokenType::LessThan, tag("<")),
         // Test for identifier only if everything else failed.
         identifier,
     ))(input)?;
     Ok((input, token))
 }
 
-fn tokens(input: &str) -> Result<Vec<Token>> {
+fn tokens(input: &str) -> Result<Vec<TokenType>> {
     not(eof)(input)?;
     let (input, (tokens, _)) = many_till(preceded(space0, token), line_ending)(input)?;
     Ok((input, tokens))
@@ -160,7 +165,7 @@ fn tokens(input: &str) -> Result<Vec<Token>> {
 fn scan_lines<'a>(
     source: &'a str,
     counter: &mut IndentationCounter,
-) -> std::result::Result<Vec<Token>, BeemoError> {
+) -> std::result::Result<Vec<TokenType>, BeemoError> {
     let indent = |i| indentation(i, counter);
     let full_line = map(pair(indent, tokens), |(mut pre, mut after)| {
         pre.append(&mut after);
@@ -185,10 +190,10 @@ pub fn scan(source: &str) -> std::result::Result<Vec<Token>, BeemoError> {
     let mut tokens = scan_lines(&source, &mut c)?;
     dbg!(&c);
     for _ in 0..c.current {
-        tokens.push(Token::Dedent);
+        tokens.push(TokenType::Dedent);
     }
-    tokens.push(Token::Eof);
-    Ok(tokens)
+    tokens.push(TokenType::Eof);
+    Ok(tokens.into_iter().map(|t| Token { ty: t }).collect())
 }
 
 #[cfg(test)]
@@ -203,16 +208,16 @@ mod tests {
 
     #[test]
     fn test_float() {
-        assert_success!(number("2"), Token::Float(2.0));
-        assert_success!(number("3.0"), Token::Float(3.0));
-        assert_success!(number("3.0345"), Token::Float(3.0345))
+        assert_success!(number("2"), TokenType::Float(2.0));
+        assert_success!(number("3.0"), TokenType::Float(3.0));
+        assert_success!(number("3.0345"), TokenType::Float(3.0345))
     }
 
     #[test]
     fn test_identifier() {
         assert_success!(
             identifier("multiply"),
-            Token::Identifier(String::from("multiply"))
+            TokenType::Identifier(String::from("multiply"))
         );
         assert!(identifier("2multiply").is_err());
         assert!(identifier("-multiply").is_err());
@@ -220,8 +225,8 @@ mod tests {
 
     #[test]
     fn test_keyword() {
-        assert_success!(keyword("if"), Token::Keyword("if".into()));
-        assert_success!(keyword("return"), Token::Keyword("return".into()));
+        assert_success!(keyword("if"), TokenType::Keyword("if".into()));
+        assert_success!(keyword("return"), TokenType::Keyword("return".into()));
     }
 
     #[test]
@@ -232,15 +237,15 @@ mod tests {
         assert_eq!(
             res,
             vec![
-                Token::Identifier("a".to_string()),
-                Token::Indent,
-                Token::Identifier("a".to_string()),
-                Token::Indent,
-                Token::Identifier("a".to_string()),
-                Token::Dedent,
-                Token::Identifier("a".to_string()),
-                Token::Dedent,
-                Token::Identifier("a".to_string()),
+                TokenType::Identifier("a".to_string()),
+                TokenType::Indent,
+                TokenType::Identifier("a".to_string()),
+                TokenType::Indent,
+                TokenType::Identifier("a".to_string()),
+                TokenType::Dedent,
+                TokenType::Identifier("a".to_string()),
+                TokenType::Dedent,
+                TokenType::Identifier("a".to_string()),
             ]
         );
     }
