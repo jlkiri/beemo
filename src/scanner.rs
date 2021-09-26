@@ -95,7 +95,7 @@ struct IndentationCounter {
 }
 
 fn keyword(input: &str) -> Result<TokenType> {
-    map(alt((tag("return"), tag("if"))), |k: &str| {
+    map(alt((tag("return"), tag("print"))), |k: &str| {
         TokenType::Keyword(k.to_string())
     })(input)
 }

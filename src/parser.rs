@@ -12,9 +12,9 @@ pub struct Parser<'a> {
 #[derive(Debug)]
 struct Declaration;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Stmt {
-    Print(String),
+    Print(Expr),
     Return(Expr),
     FunctionDeclaration(Function),
     Expression(Expr),
@@ -25,6 +25,7 @@ pub enum Value {
     String(String),
     Number(f32),
     Callable(Function),
+    Unit,
 }
 
 #[derive(Debug, Clone)]
@@ -59,6 +60,14 @@ impl<'a> Parser<'a> {
             false
         }
     }
+
+    /* fn check_keyword(&mut self, value: String) -> bool {
+        if let Some(token) = self.tokens.peek() {
+            &token.ty == ty
+        } else {
+            false
+        }
+    } */
 
     fn read_token(&mut self) -> Option<Token> {
         self.tokens.next().cloned()
@@ -139,16 +148,16 @@ impl<'a> Parser<'a> {
         self.check(&TokenType::Eof) || self.check(&TokenType::Dedent)
     }
 
-    fn block(&mut self) -> Result<Vec<Expr>> {
+    fn block(&mut self) -> Result<Vec<Stmt>> {
         self.read_token_if(&TokenType::Indent)
             .ok_or(BeemoError::ParseError(ErrorKind::NeedIndent))?;
-        let mut exprs = vec![];
+        let mut stmts = vec![];
         while !self.end_of_block() {
-            exprs.push(self.expression()?)
+            stmts.push(self.statement()?)
         }
         self.read_token_if(&TokenType::Dedent)
             .ok_or(BeemoError::ParseError(ErrorKind::NeedDedent))?;
-        Ok(exprs)
+        Ok(stmts)
     }
 
     fn function(&mut self) -> Result<Stmt> {
@@ -241,6 +250,16 @@ impl<'a> Parser<'a> {
 
     fn expression(&mut self) -> Result<Expr> {
         self.equality()
+    }
+
+    fn statement(&mut self) -> Result<Stmt> {
+        match self.read_token() {
+            Some(t) => match t.ty {
+                TokenType::Keyword(k) if k == "print" => Ok(Stmt::Print(self.expression()?)),
+                _ => Ok(Stmt::Expression(self.expression()?)),
+            },
+            None => todo!(),
+        }
     }
 
     fn declaration(&mut self) -> Result<Stmt> {

@@ -41,7 +41,7 @@ impl Environment {
         self.0.as_ref().map_or(0, |n| n.len)
     }
 
-    pub fn define(&mut self, ident: String, value: Value) {
+    pub fn define(&self, ident: String, value: Value) {
         let inner = &self
             .0
             .as_ref()

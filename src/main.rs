@@ -4,7 +4,6 @@ mod function;
 mod interpreter;
 mod parser;
 mod scanner;
-mod visit;
 
 use error::*;
 use parser::*;
