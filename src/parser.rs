@@ -3,9 +3,7 @@ use std::{collections::HashMap, iter::Peekable};
 
 use crate::function::Function;
 use crate::scanner::TokenType;
-use crate::{error::BeemoError, scanner::Token};
-
-pub type Result<T> = std::result::Result<T, BeemoError>;
+use crate::{error::*, scanner::Token};
 
 pub struct Parser<'a> {
     tokens: Peekable<Iter<'a, Token>>,
@@ -18,16 +16,17 @@ struct Declaration;
 pub enum Stmt {
     Print(String),
     Return(Expr),
-    Function(Function),
+    FunctionDeclaration(Function),
 }
 
 #[derive(Debug, Clone)]
 pub enum Value {
     String(String),
     Number(f32),
+    Callable(Function),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Literal(Value),
     Variable(String),
@@ -154,7 +153,7 @@ impl<'a> Parser<'a> {
                 self.read_token_if(&TokenType::Colon)
                     .ok_or(BeemoError::ParseError(ErrorKind::NeedColon))?;
                 let body = self.block()?;
-                Ok(Stmt::Function(Function { params, name, body }))
+                Ok(Stmt::FunctionDeclaration(Function { params, name, body }))
             }
             Some(TokenType::Colon) => {
                 todo!()
