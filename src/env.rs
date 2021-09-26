@@ -42,8 +42,9 @@ impl Environment {
     }
 
     pub fn define(&mut self, ident: String, value: Value) {
-        let inner = self
+        let inner = &self
             .0
+            .as_ref()
             .ok_or(BeemoError::InternalError)
             .expect("Unwrapped empty environment")
             .inner;
@@ -51,8 +52,9 @@ impl Environment {
     }
 
     pub fn get(&self, ident: &str) -> Option<Value> {
-        let inner = self
+        let inner = &self
             .0
+            .as_ref()
             .ok_or(BeemoError::InternalError)
             .expect("Unwrapped empty environment")
             .inner;
