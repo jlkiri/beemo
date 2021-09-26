@@ -17,6 +17,7 @@ pub enum Stmt {
     Print(String),
     Return(Expr),
     FunctionDeclaration(Function),
+    Expression(Expr),
 }
 
 #[derive(Debug, Clone)]
@@ -30,17 +31,20 @@ pub enum Value {
 pub enum Expr {
     Literal(Value),
     Variable(String),
+    Call(String, Vec<Expr>),
 }
 
 #[derive(Debug)]
 pub enum ErrorKind {
     UnexpectedEof,
     UnexpectedToken,
+    BadLiteral,
     MissingClosingBracket,
     Internal,
     NeedColon,
     NeedIndent,
     NeedDedent,
+    BadCall,
 }
 
 impl<'a> Parser<'a> {
@@ -77,15 +81,23 @@ impl<'a> Parser<'a> {
     }
 
     fn read_token_if_ident(&mut self) -> Option<String> {
+        dbg!("CALLED");
         match self.tokens.peek() {
             Some(token) => match &token.ty {
                 TokenType::Identifier(value) => {
+                    dbg!("EFWFWFE", value);
                     self.read_token();
-                    Some(value.clone())
+                    return Some(value.clone());
                 }
-                _ => None,
+                _ => {
+                    dbg!("WHAT");
+                    None
+                }
             },
-            _ => None,
+            _ => {
+                dbg!("WHAT2");
+                None
+            }
         }
     }
 
@@ -156,9 +168,14 @@ impl<'a> Parser<'a> {
                 Ok(Stmt::FunctionDeclaration(Function { params, name, body }))
             }
             Some(TokenType::Colon) => {
-                todo!()
+                let body = self.block()?;
+                Ok(Stmt::FunctionDeclaration(Function {
+                    params: vec![],
+                    name,
+                    body,
+                }))
             }
-            _ => todo!(),
+            _ => Err(BeemoError::InternalError),
         }
     }
 
@@ -179,7 +196,26 @@ impl<'a> Parser<'a> {
     }
 
     fn call(&mut self) -> Result<Expr> {
-        self.literal()
+        let lit = self.literal()?;
+        if self.read_token_if(&TokenType::OpeningParen).is_some() {
+            let mut arguments = vec![];
+            while {
+                let arg = self.expression()?;
+                dbg!("arg", &arg);
+                arguments.push(arg);
+                self.read_token_if(&TokenType::Comma).is_some()
+            } {
+                // Do-while loop.
+            }
+            self.read_token_if(&TokenType::ClosingParen)
+                .ok_or(BeemoError::ParseError(ErrorKind::MissingClosingBracket))?;
+            match lit {
+                Expr::Variable(callee) => Ok(Expr::Call(callee, arguments)),
+                _ => Err(BeemoError::ParseError(ErrorKind::BadCall)),
+            }
+        } else {
+            Ok(lit)
+        }
     }
 
     fn literal(&mut self) -> Result<Expr> {
@@ -188,8 +224,14 @@ impl<'a> Parser<'a> {
         }
 
         match self.read_token_if_ident() {
-            Some(v) => Ok(Expr::Variable(v)),
-            _ => Err(BeemoError::ParseError(ErrorKind::UnexpectedToken)),
+            Some(ref v) => {
+                dbg!("AAAAA");
+                Ok(Expr::Variable(v.clone()))
+            }
+            None => {
+                dbg!("FUCK");
+                Err(BeemoError::ParseError(ErrorKind::BadLiteral))
+            }
         }
     }
 
@@ -205,8 +247,16 @@ impl<'a> Parser<'a> {
         self.function()
     }
 
-    pub fn parse(&mut self) -> Result<Stmt> {
-        self.declaration()
+    fn eof(&mut self) -> bool {
+        self.check(&TokenType::Eof)
+    }
+
+    pub fn parse(&mut self) -> Result<Vec<Stmt>> {
+        let mut decls = vec![];
+        while !self.eof() {
+            decls.push(self.declaration()?)
+        }
+        Ok(decls)
     }
 }
 

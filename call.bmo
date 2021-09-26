@@ -1,0 +1,5 @@
+id(arg):
+	arg
+
+main:
+	arg(123)
