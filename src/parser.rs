@@ -1,6 +1,7 @@
 use std::slice::Iter;
 use std::{collections::HashMap, iter::Peekable};
 
+use crate::function::Function;
 use crate::scanner::TokenType;
 use crate::{error::BeemoError, scanner::Token};
 
@@ -14,23 +15,22 @@ pub struct Parser<'a> {
 struct Declaration;
 
 #[derive(Debug)]
-pub struct Function {
-    params: Vec<String>,
-    name: String,
-}
-
-enum Stmt {
+pub enum Stmt {
     Print(String),
     Return(Expr),
+    Function(Function),
 }
 
-enum Value {
-    String,
-    Number,
+#[derive(Debug, Clone)]
+pub enum Value {
+    String(String),
+    Number(f32),
 }
 
-enum Expr {
+#[derive(Debug)]
+pub enum Expr {
     Literal(Value),
+    Variable(String),
 }
 
 #[derive(Debug)]
@@ -39,6 +39,9 @@ pub enum ErrorKind {
     UnexpectedToken,
     MissingClosingBracket,
     Internal,
+    NeedColon,
+    NeedIndent,
+    NeedDedent,
 }
 
 impl<'a> Parser<'a> {
@@ -87,6 +90,19 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn read_token_if_float(&mut self) -> Option<f32> {
+        match self.tokens.peek() {
+            Some(token) => match &token.ty {
+                TokenType::Float(value) => {
+                    self.read_token();
+                    Some(value.clone())
+                }
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     fn peek_token(&mut self) -> Option<&Token> {
         self.tokens.peek().copied()
     }
@@ -108,7 +124,23 @@ impl<'a> Parser<'a> {
         Ok(parameters)
     }
 
-    fn function(&mut self) -> Result<Function> {
+    fn end_of_block(&mut self) -> bool {
+        self.check(&TokenType::Eof) || self.check(&TokenType::Dedent)
+    }
+
+    fn block(&mut self) -> Result<Vec<Expr>> {
+        self.read_token_if(&TokenType::Indent)
+            .ok_or(BeemoError::ParseError(ErrorKind::NeedIndent))?;
+        let mut exprs = vec![];
+        while !self.end_of_block() {
+            exprs.push(self.expression()?)
+        }
+        self.read_token_if(&TokenType::Dedent)
+            .ok_or(BeemoError::ParseError(ErrorKind::NeedDedent))?;
+        Ok(exprs)
+    }
+
+    fn function(&mut self) -> Result<Stmt> {
         let name = self
             .read_token_if_ident()
             .ok_or(BeemoError::ParseError(ErrorKind::UnexpectedToken))?;
@@ -119,7 +151,10 @@ impl<'a> Parser<'a> {
         {
             Some(TokenType::OpeningParen) => {
                 let params = self.params()?;
-                Ok(Function { params, name })
+                self.read_token_if(&TokenType::Colon)
+                    .ok_or(BeemoError::ParseError(ErrorKind::NeedColon))?;
+                let body = self.block()?;
+                Ok(Stmt::Function(Function { params, name, body }))
             }
             Some(TokenType::Colon) => {
                 todo!()
@@ -128,11 +163,50 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn declaration(&mut self) -> Result<Function> {
+    fn comparison(&mut self) -> Result<Expr> {
+        self.term()
+    }
+
+    fn term(&mut self) -> Result<Expr> {
+        self.factor()
+    }
+
+    fn factor(&mut self) -> Result<Expr> {
+        self.unary()
+    }
+
+    fn unary(&mut self) -> Result<Expr> {
+        self.call()
+    }
+
+    fn call(&mut self) -> Result<Expr> {
+        self.literal()
+    }
+
+    fn literal(&mut self) -> Result<Expr> {
+        if let Some(v) = self.read_token_if_float() {
+            return Ok(Expr::Literal(Value::Number(v)));
+        }
+
+        match self.read_token_if_ident() {
+            Some(v) => Ok(Expr::Variable(v)),
+            _ => Err(BeemoError::ParseError(ErrorKind::UnexpectedToken)),
+        }
+    }
+
+    fn equality(&mut self) -> Result<Expr> {
+        self.comparison()
+    }
+
+    fn expression(&mut self) -> Result<Expr> {
+        self.equality()
+    }
+
+    fn declaration(&mut self) -> Result<Stmt> {
         self.function()
     }
 
-    pub fn parse(&mut self) -> Result<Function> {
+    pub fn parse(&mut self) -> Result<Stmt> {
         self.declaration()
     }
 }
