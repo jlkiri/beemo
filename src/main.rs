@@ -6,9 +6,9 @@ mod parser;
 mod scanner;
 
 use error::*;
+use interpreter::*;
 use parser::*;
 use scanner::*;
-
 fn main() {
     // As of now, final newline is REQUIRED.
     let source = include_str!("../call.bmo");
@@ -16,6 +16,7 @@ fn main() {
     dbg!(&tokens);
     let mut parser = Parser::new(tokens.iter().peekable());
     let res = parser.parse().unwrap();
-    dbg!(res);
-    ()
+    dbg!(&res);
+    let interpreter = Interpreter::new();
+    interpreter.interpret(res).expect("fail");
 }

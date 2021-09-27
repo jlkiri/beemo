@@ -90,23 +90,28 @@ impl<'a> Parser<'a> {
     }
 
     fn read_token_if_ident(&mut self) -> Option<String> {
-        dbg!("CALLED");
         match self.tokens.peek() {
             Some(token) => match &token.ty {
                 TokenType::Identifier(value) => {
-                    dbg!("EFWFWFE", value);
                     self.read_token();
                     return Some(value.clone());
                 }
-                _ => {
-                    dbg!("WHAT");
-                    None
-                }
+                _ => None,
             },
-            _ => {
-                dbg!("WHAT2");
-                None
-            }
+            _ => None,
+        }
+    }
+
+    fn read_token_if_keyword(&mut self) -> Option<String> {
+        match self.tokens.peek() {
+            Some(token) => match &token.ty {
+                TokenType::Keyword(kw) => {
+                    self.read_token();
+                    return Some(kw.clone());
+                }
+                _ => None,
+            },
+            _ => None,
         }
     }
 
@@ -131,7 +136,8 @@ impl<'a> Parser<'a> {
         let mut parameters = vec![];
         while {
             if let Some(token) = self.read_token_if_ident() {
-                dbg!("IDENTIFIER", &token);
+                dbg!("param");
+                dbg!(&token);
                 parameters.push(token);
             }
 
@@ -210,7 +216,6 @@ impl<'a> Parser<'a> {
             let mut arguments = vec![];
             while {
                 let arg = self.expression()?;
-                dbg!("arg", &arg);
                 arguments.push(arg);
                 self.read_token_if(&TokenType::Comma).is_some()
             } {
@@ -233,14 +238,8 @@ impl<'a> Parser<'a> {
         }
 
         match self.read_token_if_ident() {
-            Some(ref v) => {
-                dbg!("AAAAA");
-                Ok(Expr::Variable(v.clone()))
-            }
-            None => {
-                dbg!("FUCK");
-                Err(BeemoError::ParseError(ErrorKind::BadLiteral))
-            }
+            Some(ref v) => Ok(Expr::Variable(v.clone())),
+            None => Err(BeemoError::ParseError(ErrorKind::BadLiteral)),
         }
     }
 
@@ -253,12 +252,12 @@ impl<'a> Parser<'a> {
     }
 
     fn statement(&mut self) -> Result<Stmt> {
-        match self.read_token() {
-            Some(t) => match t.ty {
-                TokenType::Keyword(k) if k == "print" => Ok(Stmt::Print(self.expression()?)),
-                _ => Ok(Stmt::Expression(self.expression()?)),
+        match self.read_token_if_keyword() {
+            Some(kw) => match kw.as_str() {
+                "print" => Ok(Stmt::Print(self.expression()?)),
+                _ => todo!(),
             },
-            None => todo!(),
+            None => Ok(Stmt::Expression(self.expression()?)),
         }
     }
 

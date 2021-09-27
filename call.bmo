@@ -2,4 +2,4 @@ id(arg):
 	arg
 
 main:
-	arg(123)
+	print id(123)

@@ -51,13 +51,34 @@ impl Environment {
         inner.borrow_mut().insert(ident, value);
     }
 
-    pub fn get(&self, ident: &str) -> Option<Value> {
-        let inner = &self
-            .0
+    fn node(&self) -> Option<&Rc<Node>> {
+        self.0.as_ref()
+    }
+
+    fn parent(&self) -> Environment {
+        self.0
             .as_ref()
+            .map_or(Environment(None), |n| n.parent.clone())
+    }
+
+    pub fn get(&self, ident: &str) -> Option<Value> {
+        let mut env = self.clone();
+        while {
+            let node = env
+                .node()
+                .ok_or(BeemoError::InternalError)
+                .expect("Unwrapped empty environment");
+            node.inner.borrow().get(ident).is_none()
+        } {
+            env = env.parent();
+        }
+
+        let node = env
+            .node()
             .ok_or(BeemoError::InternalError)
-            .expect("Unwrapped empty environment")
-            .inner;
-        inner.borrow().get(ident).cloned()
+            .expect("Unwrapped empty environment");
+
+        let val = node.inner.borrow().get(ident).cloned();
+        val
     }
 }

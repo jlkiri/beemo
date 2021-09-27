@@ -12,6 +12,7 @@ use crate::{
 pub enum ErrorKind {
     Placeholder,
     VariableUndefined,
+    NoMain,
 }
 
 pub struct Interpreter {
@@ -28,6 +29,16 @@ impl Interpreter {
     pub fn interpret(&self, stmts: Vec<Stmt>) -> Result<()> {
         for stmt in stmts {
             self.eval_stmt(&stmt, &self.globals)?
+        }
+        let main = self
+            .globals
+            .get("main")
+            .ok_or(BeemoError::RuntimeError(ErrorKind::NoMain))?;
+        match main {
+            Value::Callable(f) => {
+                f.call(self, &vec![])?;
+            }
+            _ => panic!("main is not a function"),
         }
         Ok(())
     }
@@ -56,6 +67,7 @@ impl Interpreter {
                     .ok_or(BeemoError::RuntimeError(ErrorKind::VariableUndefined))?;
                 match func {
                     Value::Callable(f) => {
+                        println!("CALLING A FUNC");
                         f.call(&self, &arguments);
                         Ok(Value::Unit)
                     }
@@ -77,7 +89,7 @@ impl Interpreter {
         match stmt {
             Stmt::FunctionDeclaration(fun) => self.eval_function_decl(fun),
             Stmt::Print(val) => {
-                println!("{:?}", val);
+                println!("PRINT STATEMENT: {:?}", self.eval_expr(val.clone(), env)?);
                 Ok(())
             }
             Stmt::Expression(expr) => {
