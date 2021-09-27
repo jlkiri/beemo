@@ -1,5 +1,5 @@
+use std::iter::Peekable;
 use std::slice::Iter;
-use std::{collections::HashMap, iter::Peekable};
 
 use crate::function::Function;
 use crate::scanner::TokenType;
@@ -8,9 +8,6 @@ use crate::{error::*, scanner::Token};
 pub struct Parser<'a> {
     tokens: Peekable<Iter<'a, Token>>,
 }
-
-#[derive(Debug)]
-struct Declaration;
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
@@ -39,12 +36,14 @@ pub enum Expr {
 pub enum ErrorKind {
     UnexpectedEof,
     UnexpectedToken,
+    ExpectedFunctionName,
+    ExpectedArgument,
     BadLiteral,
     MissingClosingBracket,
     Internal,
-    NeedColon,
-    NeedIndent,
-    NeedDedent,
+    ExpectedColon,
+    ExpectedIndent,
+    ExpectedDedent,
     BadCall,
 }
 
@@ -60,14 +59,6 @@ impl<'a> Parser<'a> {
             false
         }
     }
-
-    /* fn check_keyword(&mut self, value: String) -> bool {
-        if let Some(token) = self.tokens.peek() {
-            &token.ty == ty
-        } else {
-            false
-        }
-    } */
 
     fn read_token(&mut self) -> Option<Token> {
         self.tokens.next().cloned()
@@ -128,16 +119,10 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn peek_token(&mut self) -> Option<&Token> {
-        self.tokens.peek().copied()
-    }
-
     fn params(&mut self) -> Result<Vec<String>> {
         let mut parameters = vec![];
         while {
             if let Some(token) = self.read_token_if_ident() {
-                dbg!("param");
-                dbg!(&token);
                 parameters.push(token);
             }
 
@@ -156,20 +141,20 @@ impl<'a> Parser<'a> {
 
     fn block(&mut self) -> Result<Vec<Stmt>> {
         self.read_token_if(&TokenType::Indent)
-            .ok_or(BeemoError::ParseError(ErrorKind::NeedIndent))?;
+            .ok_or(BeemoError::ParseError(ErrorKind::ExpectedIndent))?;
         let mut stmts = vec![];
         while !self.end_of_block() {
             stmts.push(self.statement()?)
         }
         self.read_token_if(&TokenType::Dedent)
-            .ok_or(BeemoError::ParseError(ErrorKind::NeedDedent))?;
+            .ok_or(BeemoError::ParseError(ErrorKind::ExpectedDedent))?;
         Ok(stmts)
     }
 
     fn function(&mut self) -> Result<Stmt> {
         let name = self
             .read_token_if_ident()
-            .ok_or(BeemoError::ParseError(ErrorKind::UnexpectedToken))?;
+            .ok_or(BeemoError::ParseError(ErrorKind::ExpectedFunctionName))?;
 
         match self
             .read_token_if_any_of(&[TokenType::OpeningParen, TokenType::Colon])
@@ -178,7 +163,7 @@ impl<'a> Parser<'a> {
             Some(TokenType::OpeningParen) => {
                 let params = self.params()?;
                 self.read_token_if(&TokenType::Colon)
-                    .ok_or(BeemoError::ParseError(ErrorKind::NeedColon))?;
+                    .ok_or(BeemoError::ParseError(ErrorKind::ExpectedColon))?;
                 let body = self.block()?;
                 Ok(Stmt::FunctionDeclaration(Function { params, name, body }))
             }
@@ -190,7 +175,7 @@ impl<'a> Parser<'a> {
                     body,
                 }))
             }
-            _ => Err(BeemoError::InternalError),
+            _ => Err(BeemoError::ParseError(ErrorKind::ExpectedColon)),
         }
     }
 
@@ -215,7 +200,9 @@ impl<'a> Parser<'a> {
         if self.read_token_if(&TokenType::OpeningParen).is_some() {
             let mut arguments = vec![];
             while {
-                let arg = self.expression()?;
+                let arg = self
+                    .expression()
+                    .or(Err(BeemoError::ParseError(ErrorKind::ExpectedArgument)))?;
                 arguments.push(arg);
                 self.read_token_if(&TokenType::Comma).is_some()
             } {
@@ -225,7 +212,7 @@ impl<'a> Parser<'a> {
                 .ok_or(BeemoError::ParseError(ErrorKind::MissingClosingBracket))?;
             match lit {
                 Expr::Variable(callee) => Ok(Expr::Call(callee, arguments)),
-                _ => Err(BeemoError::ParseError(ErrorKind::BadCall)),
+                _ => Err(BeemoError::ParseError(ErrorKind::UnexpectedToken)),
             }
         } else {
             Ok(lit)
@@ -238,7 +225,7 @@ impl<'a> Parser<'a> {
         }
 
         match self.read_token_if_ident() {
-            Some(ref v) => Ok(Expr::Variable(v.clone())),
+            Some(v) => Ok(Expr::Variable(v)),
             None => Err(BeemoError::ParseError(ErrorKind::BadLiteral)),
         }
     }

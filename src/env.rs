@@ -73,12 +73,7 @@ impl Environment {
             env = env.parent();
         }
 
-        let node = env
-            .node()
-            .ok_or(BeemoError::InternalError)
-            .expect("Unwrapped empty environment");
-
-        let val = node.inner.borrow().get(ident).cloned();
-        val
+        env.node()
+            .and_then(|n| n.inner.borrow().get(ident).cloned())
     }
 }

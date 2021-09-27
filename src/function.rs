@@ -1,13 +1,8 @@
 use crate::error::*;
 use crate::interpreter;
 use crate::parser::Stmt;
-use std::rc::Rc;
 
-use crate::{
-    env::Environment,
-    interpreter::Interpreter,
-    parser::{Expr, Value},
-};
+use crate::{interpreter::Interpreter, parser::Value};
 
 #[derive(Debug, Clone)]
 pub struct Function {
@@ -17,17 +12,17 @@ pub struct Function {
 }
 
 impl Function {
-    pub fn call(&self, interpreter: &Interpreter, arguments: &[Value]) -> Result<()> {
-        let mut env = interpreter.globals.child();
+    pub fn call(&self, interpreter: &Interpreter, arguments: &[Value]) -> Result<Value> {
+        let env = interpreter.globals.child();
         for (i, arg) in arguments.iter().enumerate() {
             let param = self.params.get(i).ok_or(BeemoError::RuntimeError(
-                interpreter::ErrorKind::VariableUndefined,
+                interpreter::ErrorKind::ParameterArgumentMismatch,
             ))?;
             env.define(param.to_string(), arg.clone())
         }
-        let result = interpreter
-            .eval_block(&self.body, env)
-            .expect("Failed to execute function");
-        Ok(())
+        interpreter.eval_block(self.body.clone(), env.clone())?;
+        env.get("return").ok_or(BeemoError::RuntimeError(
+            interpreter::ErrorKind::NothingReturned,
+        ))
     }
 }

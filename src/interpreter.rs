@@ -11,7 +11,11 @@ use crate::{
 #[derive(Debug)]
 pub enum ErrorKind {
     Placeholder,
+    ParameterArgumentMismatch,
+    NothingReturned,
     VariableUndefined,
+    ReturnNotExpression,
+    NotCallable,
     NoMain,
 }
 
@@ -28,7 +32,7 @@ impl Interpreter {
 
     pub fn interpret(&self, stmts: Vec<Stmt>) -> Result<()> {
         for stmt in stmts {
-            self.eval_stmt(&stmt, &self.globals)?
+            self.eval_stmt(stmt, &self.globals)?
         }
         let main = self
             .globals
@@ -38,65 +42,90 @@ impl Interpreter {
             Value::Callable(f) => {
                 f.call(self, &vec![])?;
             }
-            _ => panic!("main is not a function"),
+            _ => panic!("Main is not a function."),
         }
         Ok(())
     }
 
-    pub fn eval_function_decl(&self, fun: &Function) -> Result<()> {
-        self.globals
-            .define(fun.name.clone(), Value::Callable(fun.clone()));
+    pub fn eval_print_stmt(&self, val: Expr, env: &Environment) -> Result<()> {
+        let expr = self.eval_expr(val, env)?;
+        println!("PRINT STATEMENT: {:?}", expr);
         Ok(())
+    }
+
+    pub fn eval_function_decl(&self, fun: Function) -> Result<()> {
+        self.globals.define(fun.name.clone(), Value::Callable(fun));
+        Ok(())
+    }
+
+    pub fn eval_var_expr(&self, name: String, env: &Environment) -> Result<Value> {
+        env.get(&name)
+            .ok_or(BeemoError::RuntimeError(ErrorKind::VariableUndefined))
+    }
+
+    pub fn eval_call_expr(
+        &self,
+        callee: String,
+        args: Vec<Expr>,
+        env: &Environment,
+    ) -> Result<Value> {
+        let mut arguments = vec![];
+        for expr in args {
+            let value = self.eval_expr(expr, env)?;
+            arguments.push(value);
+        }
+        let func = env
+            .get(&callee)
+            .ok_or(BeemoError::RuntimeError(ErrorKind::VariableUndefined))?;
+        match func {
+            Value::Callable(f) => {
+                let ret = f.call(&self, &arguments)?;
+                Ok(ret)
+            }
+            _ => Err(BeemoError::RuntimeError(ErrorKind::NotCallable)),
+        }
     }
 
     pub fn eval_expr(&self, expr: Expr, env: &Environment) -> Result<Value> {
         match expr {
-            Expr::Variable(name) => env
-                .get(&name)
-                .ok_or(BeemoError::RuntimeError(ErrorKind::VariableUndefined)),
-            Expr::Call(callee, args) => {
-                let arguments = args
-                    .into_iter()
-                    .map(|a| match a {
-                        Expr::Literal(v) => v,
-                        _ => panic!("whoops"),
-                    })
-                    .collect::<Vec<Value>>();
-                let func = env
-                    .get(&callee)
-                    .ok_or(BeemoError::RuntimeError(ErrorKind::VariableUndefined))?;
-                match func {
-                    Value::Callable(f) => {
-                        println!("CALLING A FUNC");
-                        f.call(&self, &arguments);
-                        Ok(Value::Unit)
-                    }
-                    _ => panic!("whoops not a callable"),
-                }
-            }
+            Expr::Variable(name) => self.eval_var_expr(name, env),
+            Expr::Call(callee, args) => self.eval_call_expr(callee, args, env),
+            Expr::Literal(value) => Ok(value),
             _ => panic!("whoops not a call not a var"),
         }
     }
 
-    pub fn eval_block(&self, stmts: &[Stmt], env: Environment) -> Result<()> {
-        for stmt in stmts {
+    pub fn eval_block(&self, stmts: Vec<Stmt>, env: Environment) -> Result<()> {
+        let last_index = stmts.len() - 1;
+        for (i, stmt) in stmts.into_iter().enumerate() {
+            if i == last_index {
+                match stmt {
+                    Stmt::Expression(expr) => {
+                        let result = self.eval_expr(expr, &env)?;
+                        env.define("return".to_string(), result);
+                        return Ok(());
+                    }
+                    _ => return Err(BeemoError::RuntimeError(ErrorKind::ReturnNotExpression)),
+                }
+            }
             self.eval_stmt(stmt, &env)?;
         }
         Ok(())
     }
 
-    pub fn eval_stmt(&self, stmt: &Stmt, env: &Environment) -> Result<()> {
+    fn eval_stmt_finish(&self, stmt: Stmt, env: &Environment) -> Result<()> {
         match stmt {
             Stmt::FunctionDeclaration(fun) => self.eval_function_decl(fun),
-            Stmt::Print(val) => {
-                println!("PRINT STATEMENT: {:?}", self.eval_expr(val.clone(), env)?);
-                Ok(())
-            }
+            Stmt::Print(val) => self.eval_print_stmt(val, env),
             Stmt::Expression(expr) => {
                 self.eval_expr(expr.clone(), env)?;
                 Ok(())
             }
             _ => todo!(),
         }
+    }
+
+    pub fn eval_stmt(&self, stmt: Stmt, env: &Environment) -> Result<()> {
+        self.eval_stmt_finish(stmt, env)
     }
 }

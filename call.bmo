@@ -3,3 +3,4 @@ id(arg):
 
 main:
 	print id(123)
+	0
