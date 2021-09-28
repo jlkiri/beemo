@@ -1,5 +1,7 @@
 use nom::branch::alt;
 use nom::bytes::complete::tag;
+use nom::bytes::complete::take_till;
+use nom::character::complete::char;
 use nom::character::complete::line_ending;
 use nom::character::complete::space0;
 use nom::character::complete::{alpha1, alphanumeric0, tab};
@@ -11,6 +13,7 @@ use nom::error::{ContextError, ErrorKind as NomErrorKind, ParseError};
 use nom::multi::many0;
 use nom::multi::many_till;
 use nom::number::complete::float;
+use nom::sequence::delimited;
 use nom::sequence::{pair, preceded, terminated};
 use nom::Err::Failure;
 use nom::Finish;
@@ -75,10 +78,13 @@ pub struct Token {
 pub enum TokenType {
     Identifier(String),
     Keyword(String),
+    String(String),
     Float(f32),
     Colon,
     Plus,
     Multiply,
+    Minus,
+    Divide,
     Comma,
     Indent,
     Dedent,
@@ -138,10 +144,26 @@ fn number(input: &str) -> Result<TokenType> {
     map(terminated(float, not(alpha1)), |v| TokenType::Float(v))(input)
 }
 
-fn token(input: &str) -> Result<TokenType> {
+fn string(input: &str) -> Result<TokenType> {
+    match map(
+        delimited(char('"'), take_till(|c| c == '"'), char('"')),
+        |seq: &str| TokenType::String(seq.to_string()),
+    )(input) {
+        Err(nom::Err::Incomplete(_)) => Err(Failure(BeemoScanError::custom(
+            input,
+            r#"Missing closing quote."#.to_string(),
+        ))),
+        Err(e) => Err(e),
+        Ok((s, token)) => Ok((s, token))
+    }
+}
+
+fn maybe_string(input: &str) -> Result<TokenType> {
+    alt((string, non_string))(input)
+}
+
+fn non_string(input: &str) -> Result<TokenType> {
     let (input, token) = alt((
-        keyword,
-        number,
         value(TokenType::Plus, tag("+")),
         value(TokenType::Multiply, tag("*")),
         value(TokenType::Colon, tag(":")),
@@ -150,6 +172,8 @@ fn token(input: &str) -> Result<TokenType> {
         value(TokenType::ClosingParen, tag(")")),
         value(TokenType::GreaterThan, tag(">")),
         value(TokenType::LessThan, tag("<")),
+        keyword,
+        number,
         // Test for identifier only if everything else failed.
         identifier,
     ))(input)?;
@@ -158,7 +182,7 @@ fn token(input: &str) -> Result<TokenType> {
 
 fn tokens(input: &str) -> Result<Vec<TokenType>> {
     not(eof)(input)?;
-    let (input, (tokens, _)) = many_till(preceded(space0, token), line_ending)(input)?;
+    let (input, (tokens, _)) = many_till(preceded(space0, maybe_string), line_ending)(input)?;
     Ok((input, tokens))
 }
 

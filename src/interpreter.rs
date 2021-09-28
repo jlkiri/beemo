@@ -86,11 +86,18 @@ impl Interpreter {
         }
     }
 
+    fn eval_binary_expr(&self, expr: Expr, env: &Environment) -> Result<Value> {
+        
+    }
+
     pub fn eval_expr(&self, expr: Expr, env: &Environment) -> Result<Value> {
         match expr {
             Expr::Variable(name) => self.eval_var_expr(name, env),
             Expr::Call(callee, args) => self.eval_call_expr(callee, args, env),
             Expr::Literal(value) => Ok(value),
+            Expr::Binary(op, lhs, rhs) => {
+                match p[]
+            }
             _ => panic!("whoops not a call not a var"),
         }
     }

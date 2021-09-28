@@ -29,6 +29,7 @@ pub enum Value {
 pub enum Expr {
     Literal(Value),
     Variable(String),
+    Binary(TokenType, Box<Expr>, Box<Expr>),
     Call(String, Vec<Expr>),
 }
 
@@ -71,6 +72,10 @@ impl<'a> Parser<'a> {
         None
     }
 
+    fn read_token_if_op(&mut self) -> Option<Token> {
+        self.read_token_if_any_of(&[TokenType::Plus, TokenType::Multiply, TokenType::Divide, TokenType::Minus])
+    }
+
     fn read_token_if_any_of(&mut self, types: &[TokenType]) -> Option<Token> {
         for ty in types {
             if self.check(ty) {
@@ -86,6 +91,19 @@ impl<'a> Parser<'a> {
                 TokenType::Identifier(value) => {
                     self.read_token();
                     return Some(value.clone());
+                }
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    fn read_token_if_string(&mut self) -> Option<String> {
+        match self.tokens.peek() {
+            Some(token) => match &token.ty {
+                TokenType::String(s) => {
+                    self.read_token();
+                    return Some(s.clone());
                 }
                 _ => None,
             },
@@ -179,17 +197,42 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn comparison(&mut self) -> Result<Expr> {
-        self.term()
+    fn comparison_finish(&mut self, min_bp: u8) -> Result<Expr> {
+        let mut lhs = self.unary()?;
+        loop {
+            let op = match self.read_token_if_op() {
+                None => break,
+                Some(op) => op.ty
+            };
+            let (lbp, rbp) = self.infix_binding_power(&op);
+            if lbp < min_bp {
+                break;
+            }
+            let rhs = self.comparison_finish(rbp)?;
+            lhs = Expr::Binary(op, Box::new(lhs), Box::new(rhs))
+        }
+        Ok(lhs)
     }
 
-    fn term(&mut self) -> Result<Expr> {
+    fn comparison(&mut self) -> Result<Expr> {
+        self.comparison_finish(0)
+    }
+
+    fn infix_binding_power(&self, op: &TokenType) -> (u8, u8) {
+        match op {
+            TokenType::Divide | TokenType::Multiply => (3,4),
+            TokenType::Plus | TokenType::Minus => (1,2),
+            _ => todo!()
+        }
+    }
+
+    /* fn term(&mut self) -> Result<Expr> {
         self.factor()
     }
 
     fn factor(&mut self) -> Result<Expr> {
         self.unary()
-    }
+    } */
 
     fn unary(&mut self) -> Result<Expr> {
         self.call()
@@ -222,6 +265,10 @@ impl<'a> Parser<'a> {
     fn literal(&mut self) -> Result<Expr> {
         if let Some(v) = self.read_token_if_float() {
             return Ok(Expr::Literal(Value::Number(v)));
+        }
+
+        if let Some(s) = self.read_token_if_string() {
+            return Ok(Expr::Literal(Value::String(s)));
         }
 
         match self.read_token_if_ident() {
