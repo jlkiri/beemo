@@ -23,7 +23,7 @@ use crate::error::BeemoError;
 
 pub type Result<'a, T> = nom::IResult<&'a str, T, BeemoScanError<&'a str>>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum ErrorKind {
     Nom(NomErrorKind),
     Context(&'static str),
@@ -32,24 +32,24 @@ pub enum ErrorKind {
 
 #[derive(Debug, PartialEq)]
 pub struct BeemoScanError<I> {
-    pub errors: Vec<(I, ErrorKind)>,
+    pub error: (I, ErrorKind),
 }
 
 impl<I> ParseError<I> for BeemoScanError<I> {
     fn from_error_kind(input: I, kind: NomErrorKind) -> Self {
         Self {
-            errors: vec![(input, ErrorKind::Nom(kind))],
+            error: (input, ErrorKind::Nom(kind)),
         }
     }
 
     fn append(input: I, kind: NomErrorKind, mut other: Self) -> Self {
-        other.errors.push((input, ErrorKind::Nom(kind)));
+        // other.errors.push((input, ErrorKind::Nom(kind)));
         other
     }
 
     fn from_char(input: I, c: char) -> Self {
         Self {
-            errors: vec![(input, ErrorKind::Context("char"))],
+            error: (input, ErrorKind::Context("char")),
         }
     }
 }
@@ -57,14 +57,14 @@ impl<I> ParseError<I> for BeemoScanError<I> {
 impl<I> BeemoScanError<I> {
     pub fn custom(input: I, msg: String) -> Self {
         Self {
-            errors: vec![(input, ErrorKind::Custom(msg))],
+            error: (input, ErrorKind::Custom(msg)),
         }
     }
 }
 
 impl<I> ContextError<I> for BeemoScanError<I> {
     fn add_context(input: I, ctx: &'static str, mut other: Self) -> Self {
-        other.errors.push((input, ErrorKind::Context(ctx)));
+        // other.errors.push((input, ErrorKind::Context(ctx)));
         other
     }
 }
@@ -194,14 +194,10 @@ fn scan_lines<'a>(
         .finish()
         .map(|(_, (parsed_lines, _))| parsed_lines.into_iter().flatten().collect())
         .map_err(|e| {
-            BeemoError::ScanError(
-                source.to_string(),
-                (0, 10),
-                e.errors
-                    .into_iter()
-                    .map(|(i, kind)| (i.to_string(), kind))
-                    .collect(),
-            )
+            let (rest, kind) = e.error;
+            dbg!(rest);
+            let offset = source.len() - rest.len();
+            BeemoError::ScanError(source.to_string(), (offset, 1), kind.to_owned())
         })
 }
 

@@ -1,4 +1,4 @@
-use miette::{Diagnostic, SourceSpan};
+use miette::{self, Diagnostic, SourceSpan};
 use thiserror::Error;
 
 use crate::interpreter;
@@ -16,7 +16,7 @@ pub enum BeemoError {
     ScanError(
         #[source_code] String,
         #[label = "This is the highlight"] (usize, usize),
-        Vec<(String, scanner::ErrorKind)>,
+        scanner::ErrorKind,
     ),
     #[error("Runtime error.")]
     RuntimeError(interpreter::ErrorKind),
