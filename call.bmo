@@ -2,7 +2,7 @@ addSelfAndOne(x):
 	x + x + 1
 
 double(x):
-	2x * x
+	x * x
 
 main:
-	print 2addSelfAndOne(double(3 + 5 * 7 + 1))
+	print 2addSelfAndOne 2addSelfAndOne(double(3 + 5 * 7 + 1))

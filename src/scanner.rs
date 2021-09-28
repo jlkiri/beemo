@@ -1,10 +1,13 @@
 use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::bytes::complete::take_till;
+use nom::bytes::complete::take_while;
 use nom::character::complete::char;
 use nom::character::complete::line_ending;
 use nom::character::complete::space0;
+use nom::character::complete::space1;
 use nom::character::complete::{alpha1, alphanumeric0, tab};
+use nom::character::is_alphanumeric;
 use nom::combinator::all_consuming;
 use nom::combinator::eof;
 use nom::combinator::not;
@@ -19,15 +22,21 @@ use nom::Err::Failure;
 use nom::Finish;
 use nom::{self};
 
+use miette::Diagnostic;
+use thiserror::Error;
+
 use crate::error::BeemoError;
 
 pub type Result<'a, T> = nom::IResult<&'a str, T, BeemoScanError<&'a str>>;
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Diagnostic, Error, Clone)]
 pub enum ErrorKind {
+    #[error("{0:?}")]
     Nom(NomErrorKind),
+    #[error("{0}")]
     Context(&'static str),
-    Custom(String),
+    #[error("{1}")]
+    Custom(usize, String),
 }
 
 #[derive(Debug, PartialEq)]
@@ -55,9 +64,9 @@ impl<I> ParseError<I> for BeemoScanError<I> {
 }
 
 impl<I> BeemoScanError<I> {
-    pub fn custom(input: I, msg: String) -> Self {
+    pub fn custom(span: usize, input: I, msg: String) -> Self {
         Self {
-            error: (input, ErrorKind::Custom(msg)),
+            error: (input, ErrorKind::Custom(span, msg)),
         }
     }
 }
@@ -112,10 +121,16 @@ fn identifier(input: &str) -> Result<TokenType> {
     })(input)
     {
         Ok((rest, t)) => Ok((rest, t)),
-        Err(nom::Err::Error(_)) => Err(Failure(BeemoScanError::custom(
-            input,
-            "Bad identifier".into(),
-        ))),
+        Err(nom::Err::Error(_)) => {
+            let (next, _) = terminated::<_, _, _, (), _, _>(alphanumeric0, space1)(input)
+                .expect("Impossible to find a span.");
+            let span = input.len() - next.len();
+            Err(Failure(BeemoScanError::custom(
+                span,
+                input,
+                "Bad identifier".into(),
+            )))
+        }
         Err(e) => Err(e),
     }
 }
@@ -147,7 +162,7 @@ fn string(input: &str) -> Result<TokenType> {
     let (input, token) = char('"')(input)?;
     let (input, value) = take_till(|c| c == '"')(input)?;
     let (input, token) = char::<_, BeemoScanError<&str>>('"')(input).or(Err(Failure(
-        BeemoScanError::custom(input, r#"Missing closing quote."#.to_string()),
+        BeemoScanError::custom(0, input, r#"Missing closing quote."#.to_string()),
     )))?;
     Ok((input, TokenType::String(value.to_string())))
 }
@@ -197,6 +212,13 @@ fn scan_lines<'a>(
             let (rest, kind) = e.error;
             dbg!(rest);
             let offset = source.len() - rest.len();
+            if let ErrorKind::Custom(span, ..) = kind {
+                return BeemoError::ScanError(
+                    source.to_string(),
+                    (offset + 2, span),
+                    kind.to_owned(),
+                );
+            }
             BeemoError::ScanError(source.to_string(), (offset, 1), kind.to_owned())
         })
 }

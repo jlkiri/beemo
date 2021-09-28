@@ -11,7 +11,7 @@ pub type Result<T> = std::result::Result<T, BeemoError>;
 pub enum BeemoError {
     #[error("Parse error.")]
     ParseError(parser::ErrorKind),
-    #[error("Scan error: {0:?}.")]
+    #[error("Scan error: {2}.")]
     #[diagnostic(code(beemo::scanner))]
     ScanError(
         #[source_code] String,
