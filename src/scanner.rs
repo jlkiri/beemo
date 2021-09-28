@@ -195,6 +195,8 @@ fn scan_lines<'a>(
         .map(|(_, (parsed_lines, _))| parsed_lines.into_iter().flatten().collect())
         .map_err(|e| {
             BeemoError::ScanError(
+                source.to_string(),
+                (0, 10),
                 e.errors
                     .into_iter()
                     .map(|(i, kind)| (i.to_string(), kind))
