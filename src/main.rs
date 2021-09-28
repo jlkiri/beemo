@@ -9,7 +9,6 @@ mod scanner;
 
 use std::fs;
 
-
 use interpreter::*;
 use parser::*;
 use scanner::*;

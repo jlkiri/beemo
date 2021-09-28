@@ -20,7 +20,7 @@ impl Function {
             ))?;
             env.define(param.to_string(), arg.clone())
         }
-        interpreter.eval_block(self.body.clone(), env.clone())?;
+        interpreter.eval_block(self.body.clone(), &env)?;
         env.get("return").ok_or(BeemoError::RuntimeError(
             interpreter::ErrorKind::NothingReturned,
         ))

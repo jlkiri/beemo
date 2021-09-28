@@ -1,2 +1,2 @@
-add(a, b):
-	a
+main:
+	print "wefwefwef

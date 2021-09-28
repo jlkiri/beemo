@@ -1,9 +1,8 @@
-addSelf(x):
-	x + x
+addSelfAndOne(x):
+	x + x + 1
 
 double(x):
 	x * x
 
 main:
-	print addSelf(double(3 + 5))
-	0
+	print addSelfAndOne(double(3 + 5 * 7 + 2))

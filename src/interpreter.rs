@@ -1,4 +1,11 @@
-use crate::{env::Environment, error::*, function::Function, parser::Stmt, parser::{Expr, Value}, scanner::TokenType};
+use crate::{
+    env::Environment,
+    error::*,
+    function::Function,
+    parser::Stmt,
+    parser::{Expr, Value},
+    scanner::TokenType,
+};
 
 #[derive(Debug)]
 pub enum ErrorKind {
@@ -79,35 +86,33 @@ impl Interpreter {
         }
     }
 
-    fn eval_binary_expr(&self, op: TokenType, lhs: Expr, rhs: Expr, env: &Environment) -> Result<Value> {
+    fn eval_binary_expr(
+        &self,
+        op: TokenType,
+        lhs: Expr,
+        rhs: Expr,
+        env: &Environment,
+    ) -> Result<Value> {
         let lexpr = self.eval_expr(lhs, env)?;
         let rexpr = self.eval_expr(rhs, env)?;
         match op {
-            TokenType::Plus => {
-                match (lexpr, rexpr) {
-                    (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l + r)),
-                    _ => Err(BeemoError::RuntimeError(ErrorKind::WrongOperand))
-                }
+            TokenType::Plus => match (lexpr, rexpr) {
+                (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l + r)),
+                _ => Err(BeemoError::RuntimeError(ErrorKind::WrongOperand)),
             },
-            TokenType::Minus => {
-                match (lexpr, rexpr) {
-                    (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l - r)),
-                    _ => Err(BeemoError::RuntimeError(ErrorKind::WrongOperand))
-                }
+            TokenType::Minus => match (lexpr, rexpr) {
+                (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l - r)),
+                _ => Err(BeemoError::RuntimeError(ErrorKind::WrongOperand)),
             },
-            TokenType::Multiply => {
-                match (lexpr, rexpr) {
-                    (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l * r)),
-                    _ => Err(BeemoError::RuntimeError(ErrorKind::WrongOperand))
-                }
+            TokenType::Multiply => match (lexpr, rexpr) {
+                (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l * r)),
+                _ => Err(BeemoError::RuntimeError(ErrorKind::WrongOperand)),
             },
-            TokenType::Divide => {
-                match (lexpr, rexpr) {
-                    (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l / r)),
-                    _ => Err(BeemoError::RuntimeError(ErrorKind::WrongOperand))
-                }
+            TokenType::Divide => match (lexpr, rexpr) {
+                (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l / r)),
+                _ => Err(BeemoError::RuntimeError(ErrorKind::WrongOperand)),
             },
-            _ => Err(BeemoError::RuntimeError(ErrorKind::NotInfixOperator))
+            _ => Err(BeemoError::RuntimeError(ErrorKind::NotInfixOperator)),
         }
     }
 
@@ -120,20 +125,24 @@ impl Interpreter {
         }
     }
 
-    pub fn eval_block(&self, stmts: Vec<Stmt>, env: Environment) -> Result<()> {
-        let last_index = stmts.len() - 1;
+    pub fn eval_block(&self, stmts: Vec<Stmt>, env: &Environment) -> Result<()> {
+        let length = stmts.len();
         for (i, stmt) in stmts.into_iter().enumerate() {
-            if i == last_index {
+            if i == length - 1 {
                 match stmt {
                     Stmt::Expression(expr) => {
-                        let result = self.eval_expr(expr, &env)?;
+                        let result = self.eval_expr(expr, env)?;
                         env.define("return".to_string(), result);
                         return Ok(());
                     }
-                    _ => return Err(BeemoError::RuntimeError(ErrorKind::ReturnNotExpression)),
+                    _ => {
+                        self.eval_stmt(stmt, env)?;
+                        env.define("return".to_string(), Value::Unit);
+                        return Ok(());
+                    }
                 }
             }
-            self.eval_stmt(stmt, &env)?;
+            self.eval_stmt(stmt, env)?;
         }
         Ok(())
     }

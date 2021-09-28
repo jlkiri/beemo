@@ -121,7 +121,6 @@ fn identifier(input: &str) -> Result<TokenType> {
 }
 
 fn indentation<'a>(input: &'a str, counter: &mut IndentationCounter) -> Result<'a, Vec<TokenType>> {
-    // dbg!("INDENT");
     let (rest, tabs) = many0(tab)(input)?;
     let mut indent_tokens = vec![];
     let indent_level = tabs.len() as isize;
@@ -145,17 +144,12 @@ fn number(input: &str) -> Result<TokenType> {
 }
 
 fn string(input: &str) -> Result<TokenType> {
-    match map(
-        delimited(char('"'), take_till(|c| c == '"'), char('"')),
-        |seq: &str| TokenType::String(seq.to_string()),
-    )(input) {
-        Err(nom::Err::Incomplete(_)) => Err(Failure(BeemoScanError::custom(
-            input,
-            r#"Missing closing quote."#.to_string(),
-        ))),
-        Err(e) => Err(e),
-        Ok((s, token)) => Ok((s, token))
-    }
+    let (input, token) = char('"')(input)?;
+    let (input, value) = take_till(|c| c == '"')(input)?;
+    let (input, token) = char::<_, BeemoScanError<&str>>('"')(input).or(Err(Failure(
+        BeemoScanError::custom(input, r#"Missing closing quote."#.to_string()),
+    )))?;
+    Ok((input, TokenType::String(value.to_string())))
 }
 
 fn maybe_string(input: &str) -> Result<TokenType> {

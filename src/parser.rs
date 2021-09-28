@@ -74,10 +74,10 @@ impl<'a> Parser<'a> {
     }
 
     fn is_op(&self, ty: &TokenType) -> bool {
-        match ty {
-            TokenType::Plus | TokenType::Multiply | TokenType::Divide | TokenType::Minus => true,
-            _ => false
-        }
+        matches!(
+            ty,
+            TokenType::Plus | TokenType::Multiply | TokenType::Divide | TokenType::Minus
+        )
     }
 
     fn read_token_if_any_of(&mut self, types: &[TokenType]) -> Option<Token> {
@@ -153,7 +153,7 @@ impl<'a> Parser<'a> {
             // Do-while loop.
         }
         self.read_token_if(&TokenType::ClosingParen)
-            .ok_or(BeemoError::ParseError(ErrorKind::MissingClosingBracket))?;
+            .ok_or(self.err(ErrorKind::MissingClosingBracket))?;
         Ok(parameters)
     }
 
@@ -161,22 +161,26 @@ impl<'a> Parser<'a> {
         self.check(&TokenType::Eof) || self.check(&TokenType::Dedent)
     }
 
+    fn err(&self, kind: ErrorKind) -> BeemoError {
+        BeemoError::ParseError(kind)
+    }
+
     fn block(&mut self) -> Result<Vec<Stmt>> {
         self.read_token_if(&TokenType::Indent)
-            .ok_or(BeemoError::ParseError(ErrorKind::ExpectedIndent))?;
+            .ok_or(self.err(ErrorKind::ExpectedIndent))?;
         let mut stmts = vec![];
         while !self.end_of_block() {
             stmts.push(self.statement()?)
         }
         self.read_token_if(&TokenType::Dedent)
-            .ok_or(BeemoError::ParseError(ErrorKind::ExpectedDedent))?;
+            .ok_or(self.err(ErrorKind::ExpectedDedent))?;
         Ok(stmts)
     }
 
     fn function(&mut self) -> Result<Stmt> {
         let name = self
             .read_token_if_ident()
-            .ok_or(BeemoError::ParseError(ErrorKind::ExpectedFunctionName))?;
+            .ok_or(self.err(ErrorKind::ExpectedFunctionName))?;
 
         match self
             .read_token_if_any_of(&[TokenType::OpeningParen, TokenType::Colon])
@@ -185,7 +189,7 @@ impl<'a> Parser<'a> {
             Some(TokenType::OpeningParen) => {
                 let params = self.params()?;
                 self.read_token_if(&TokenType::Colon)
-                    .ok_or(BeemoError::ParseError(ErrorKind::ExpectedColon))?;
+                    .ok_or(self.err(ErrorKind::ExpectedColon))?;
                 let body = self.block()?;
                 Ok(Stmt::FunctionDeclaration(Function { params, name, body }))
             }
@@ -197,7 +201,7 @@ impl<'a> Parser<'a> {
                     body,
                 }))
             }
-            _ => Err(BeemoError::ParseError(ErrorKind::ExpectedColon)),
+            _ => Err(self.err(ErrorKind::ExpectedColon)),
         }
     }
 
@@ -207,7 +211,7 @@ impl<'a> Parser<'a> {
             let op = match self.peek_token() {
                 None => break,
                 Some(Token { ty }) if self.is_op(&ty) => ty,
-                _ => break
+                _ => break,
             };
             let (lbp, rbp) = self.infix_binding_power(&op);
             if lbp < min_bp {
@@ -226,9 +230,9 @@ impl<'a> Parser<'a> {
 
     fn infix_binding_power(&self, op: &TokenType) -> (u8, u8) {
         match op {
-            TokenType::Divide | TokenType::Multiply => (3,4),
-            TokenType::Plus | TokenType::Minus => (1,2),
-            _ => todo!()
+            TokenType::Divide | TokenType::Multiply => (3, 4),
+            TokenType::Plus | TokenType::Minus => (1, 2),
+            _ => todo!(),
         }
     }
 
@@ -255,17 +259,20 @@ impl<'a> Parser<'a> {
             while {
                 let arg = self
                     .expression()
-                    .or(Err(BeemoError::ParseError(ErrorKind::ExpectedArgument)))?;
+                    .or(Err(self.err(ErrorKind::ExpectedArgument)))?;
                 arguments.push(arg);
                 self.read_token_if(&TokenType::Comma).is_some()
             } {
                 // Do-while loop.
             }
             self.read_token_if(&TokenType::ClosingParen)
-                .ok_or(BeemoError::ParseError(ErrorKind::MissingClosingParenInCall(self.peek_token().unwrap())))?;
+                .ok_or_else(|| {
+                    let t = self.peek_token().expect("Unexpected eof.");
+                    self.err(ErrorKind::MissingClosingParenInCall(t))
+                })?;
             match lit {
                 Expr::Variable(callee) => Ok(Expr::Call(callee, arguments)),
-                _ => Err(BeemoError::ParseError(ErrorKind::UnexpectedToken)),
+                _ => Err(self.err(ErrorKind::UnexpectedToken)),
             }
         } else {
             Ok(lit)
@@ -283,7 +290,7 @@ impl<'a> Parser<'a> {
 
         match self.read_token_if_ident() {
             Some(v) => Ok(Expr::Variable(v)),
-            None => Err(BeemoError::ParseError(ErrorKind::BadLiteral)),
+            None => Err(self.err(ErrorKind::BadLiteral)),
         }
     }
 
