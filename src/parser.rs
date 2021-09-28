@@ -41,6 +41,7 @@ pub enum ErrorKind {
     ExpectedArgument,
     BadLiteral,
     MissingClosingBracket,
+    MissingClosingParenInCall(Token),
     Internal,
     ExpectedColon,
     ExpectedIndent,
@@ -72,8 +73,11 @@ impl<'a> Parser<'a> {
         None
     }
 
-    fn read_token_if_op(&mut self) -> Option<Token> {
-        self.read_token_if_any_of(&[TokenType::Plus, TokenType::Multiply, TokenType::Divide, TokenType::Minus])
+    fn is_op(&self, ty: &TokenType) -> bool {
+        match ty {
+            TokenType::Plus | TokenType::Multiply | TokenType::Divide | TokenType::Minus => true,
+            _ => false
+        }
     }
 
     fn read_token_if_any_of(&mut self, types: &[TokenType]) -> Option<Token> {
@@ -200,14 +204,16 @@ impl<'a> Parser<'a> {
     fn comparison_finish(&mut self, min_bp: u8) -> Result<Expr> {
         let mut lhs = self.unary()?;
         loop {
-            let op = match self.read_token_if_op() {
+            let op = match self.peek_token() {
                 None => break,
-                Some(op) => op.ty
+                Some(Token { ty }) if self.is_op(&ty) => ty,
+                _ => break
             };
             let (lbp, rbp) = self.infix_binding_power(&op);
             if lbp < min_bp {
                 break;
             }
+            self.read_token();
             let rhs = self.comparison_finish(rbp)?;
             lhs = Expr::Binary(op, Box::new(lhs), Box::new(rhs))
         }
@@ -238,6 +244,10 @@ impl<'a> Parser<'a> {
         self.call()
     }
 
+    fn peek_token(&mut self) -> Option<Token> {
+        self.tokens.peek().copied().cloned()
+    }
+
     fn call(&mut self) -> Result<Expr> {
         let lit = self.literal()?;
         if self.read_token_if(&TokenType::OpeningParen).is_some() {
@@ -252,7 +262,7 @@ impl<'a> Parser<'a> {
                 // Do-while loop.
             }
             self.read_token_if(&TokenType::ClosingParen)
-                .ok_or(BeemoError::ParseError(ErrorKind::MissingClosingBracket))?;
+                .ok_or(BeemoError::ParseError(ErrorKind::MissingClosingParenInCall(self.peek_token().unwrap())))?;
             match lit {
                 Expr::Variable(callee) => Ok(Expr::Call(callee, arguments)),
                 _ => Err(BeemoError::ParseError(ErrorKind::UnexpectedToken)),

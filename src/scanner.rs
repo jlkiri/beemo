@@ -212,7 +212,7 @@ fn scan_lines<'a>(
 pub fn scan(source: &str) -> std::result::Result<Vec<Token>, BeemoError> {
     let mut c = IndentationCounter { current: 0 };
     let mut tokens = scan_lines(&source, &mut c)?;
-    dbg!(&c);
+    // dbg!(&c);
     for _ in 0..c.current {
         tokens.push(TokenType::Dedent);
     }

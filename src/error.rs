@@ -1,4 +1,3 @@
-use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;
 
 use crate::interpreter;

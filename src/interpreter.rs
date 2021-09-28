@@ -1,16 +1,9 @@
-use std::{collections::HashMap, rc::Rc};
-
-use crate::{
-    env::Environment,
-    error::*,
-    function::Function,
-    parser::Stmt,
-    parser::{Expr, Value},
-};
+use crate::{env::Environment, error::*, function::Function, parser::Stmt, parser::{Expr, Value}, scanner::TokenType};
 
 #[derive(Debug)]
 pub enum ErrorKind {
-    Placeholder,
+    WrongOperand,
+    NotInfixOperator,
     ParameterArgumentMismatch,
     NothingReturned,
     VariableUndefined,
@@ -86,8 +79,36 @@ impl Interpreter {
         }
     }
 
-    fn eval_binary_expr(&self, expr: Expr, env: &Environment) -> Result<Value> {
-        
+    fn eval_binary_expr(&self, op: TokenType, lhs: Expr, rhs: Expr, env: &Environment) -> Result<Value> {
+        let lexpr = self.eval_expr(lhs, env)?;
+        let rexpr = self.eval_expr(rhs, env)?;
+        match op {
+            TokenType::Plus => {
+                match (lexpr, rexpr) {
+                    (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l + r)),
+                    _ => Err(BeemoError::RuntimeError(ErrorKind::WrongOperand))
+                }
+            },
+            TokenType::Minus => {
+                match (lexpr, rexpr) {
+                    (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l - r)),
+                    _ => Err(BeemoError::RuntimeError(ErrorKind::WrongOperand))
+                }
+            },
+            TokenType::Multiply => {
+                match (lexpr, rexpr) {
+                    (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l * r)),
+                    _ => Err(BeemoError::RuntimeError(ErrorKind::WrongOperand))
+                }
+            },
+            TokenType::Divide => {
+                match (lexpr, rexpr) {
+                    (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l / r)),
+                    _ => Err(BeemoError::RuntimeError(ErrorKind::WrongOperand))
+                }
+            },
+            _ => Err(BeemoError::RuntimeError(ErrorKind::NotInfixOperator))
+        }
     }
 
     pub fn eval_expr(&self, expr: Expr, env: &Environment) -> Result<Value> {
@@ -95,10 +116,7 @@ impl Interpreter {
             Expr::Variable(name) => self.eval_var_expr(name, env),
             Expr::Call(callee, args) => self.eval_call_expr(callee, args, env),
             Expr::Literal(value) => Ok(value),
-            Expr::Binary(op, lhs, rhs) => {
-                match p[]
-            }
-            _ => panic!("whoops not a call not a var"),
+            Expr::Binary(op, lhs, rhs) => self.eval_binary_expr(op, *lhs, *rhs, env),
         }
     }
 

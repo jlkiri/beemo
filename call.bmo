@@ -1,6 +1,9 @@
-id(arg):
-	arg
+addSelf(x):
+	x + x
+
+double(x):
+	x * x
 
 main:
-	print id("123")
+	print addSelf(double(3 + 5))
 	0
