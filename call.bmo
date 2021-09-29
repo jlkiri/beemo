@@ -5,4 +5,4 @@ double(x):
 	x * x
 
 main:
-	print 2addSelfAndOne 2addSelfAndOne(double(3 + 5 * 7 + 1))
+	print 2add 2addSelfAndOne(double(3 + 5 * 7 + 1)) wefewf

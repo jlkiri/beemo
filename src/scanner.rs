@@ -2,6 +2,8 @@ use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::bytes::complete::take_till;
 use nom::bytes::complete::take_while;
+use nom::character::complete::alphanumeric1;
+use nom::character::complete::anychar;
 use nom::character::complete::char;
 use nom::character::complete::line_ending;
 use nom::character::complete::space0;
@@ -10,6 +12,7 @@ use nom::character::complete::{alpha1, alphanumeric0, tab};
 use nom::character::is_alphanumeric;
 use nom::combinator::all_consuming;
 use nom::combinator::eof;
+use nom::combinator::iterator;
 use nom::combinator::not;
 use nom::combinator::{map, recognize, value};
 use nom::error::{ContextError, ErrorKind as NomErrorKind, ParseError};
@@ -20,6 +23,7 @@ use nom::sequence::delimited;
 use nom::sequence::{pair, preceded, terminated};
 use nom::Err::Failure;
 use nom::Finish;
+use nom::Offset;
 use nom::{self};
 
 use miette::Diagnostic;
@@ -122,9 +126,13 @@ fn identifier(input: &str) -> Result<TokenType> {
     {
         Ok((rest, t)) => Ok((rest, t)),
         Err(nom::Err::Error(_)) => {
-            let (next, _) = terminated::<_, _, _, (), _, _>(alphanumeric0, space1)(input)
+            dbg!(input);
+            let (next, _) = many_till::<_, _, _, (), _, _>(anychar, space1)(input)
                 .expect("Impossible to find a span.");
-            let span = input.len() - next.len();
+
+                dbg!(next);
+            let span = input.offset(next) - 1; // Do not count matched whitespace;
+            dbg!(span);
             Err(Failure(BeemoScanError::custom(
                 span,
                 input,
@@ -195,6 +203,17 @@ fn tokens(input: &str) -> Result<Vec<TokenType>> {
     Ok((input, tokens))
 }
 
+fn preceding_lines(input: &str) -> Result<(Vec<()>, &str)> {
+    terminated(many_till(value((), anychar), line_ending), not(eof))(input)
+}
+
+fn count_preceding_lines(input: &str) -> (&str, usize) {
+    let mut iter = iterator(input, preceding_lines);
+    let count = iter.count();
+    let (rest, _) = iter.finish().finish().expect("Should not fail.");
+    (rest, count)
+}
+
 fn scan_lines<'a>(
     source: &'a str,
     counter: &mut IndentationCounter,
@@ -209,17 +228,21 @@ fn scan_lines<'a>(
         .finish()
         .map(|(_, (parsed_lines, _))| parsed_lines.into_iter().flatten().collect())
         .map_err(|e| {
-            let (rest, kind) = e.error;
-            dbg!(rest);
-            let offset = source.len() - rest.len();
+            let (unscanned, kind): (&str, ErrorKind) = e.error;
+            dbg!(unscanned);
+            let global_offset = source.offset(unscanned);
+            let alter = source.find(unscanned).unwrap_or(0);
+            let (start, lines) = count_preceding_lines(&source[..=global_offset]);
+            dbg!(start);
+            // let line_offset = unscanned.offset(start);
+            let tab_count = start.matches('\t').count();
+            let tabs = tab_count * 2; // When tab width is 2.
+            dbg!(global_offset);
+            dbg!(global_offset + tabs - tab_count);
             if let ErrorKind::Custom(span, ..) = kind {
-                return BeemoError::ScanError(
-                    source.to_string(),
-                    (offset + 2, span),
-                    kind.to_owned(),
-                );
+                return BeemoError::ScanError(source.to_string(), (global_offset + tabs - tab_count, span), kind.to_owned());
             }
-            BeemoError::ScanError(source.to_string(), (offset, 1), kind.to_owned())
+            BeemoError::ScanError(source.to_string(), (global_offset + tabs - tab_count, 1), kind.to_owned())
         })
 }
 
