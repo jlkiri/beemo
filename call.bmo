@@ -1,8 +1,8 @@
 addSelfAndOne(x):
-	x + x + 1
+    x + x + 1
 
 double(x):
-	x * x
+    x * x
 
 main:
-	print 2add 2addSelfAndOne(double(3 + 5 * 7 + 1)) wefewf
+    print 2add 2addSelfAndOne(double(3 + 5 * 7 + 1)) wefewf

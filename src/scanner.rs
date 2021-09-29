@@ -130,7 +130,7 @@ fn identifier(input: &str) -> Result<TokenType> {
             let (next, _) = many_till::<_, _, _, (), _, _>(anychar, space1)(input)
                 .expect("Impossible to find a span.");
 
-                dbg!(next);
+            dbg!(next);
             let span = input.offset(next) - 1; // Do not count matched whitespace;
             dbg!(span);
             Err(Failure(BeemoScanError::custom(
@@ -229,20 +229,20 @@ fn scan_lines<'a>(
         .map(|(_, (parsed_lines, _))| parsed_lines.into_iter().flatten().collect())
         .map_err(|e| {
             let (unscanned, kind): (&str, ErrorKind) = e.error;
-            dbg!(unscanned);
+            // Replace tabs with spaces due to miette issues.
+            let spaced_source = source.replace('\t', "    ").to_string();
             let global_offset = source.offset(unscanned);
-            let alter = source.find(unscanned).unwrap_or(0);
-            let (start, lines) = count_preceding_lines(&source[..=global_offset]);
-            dbg!(start);
-            // let line_offset = unscanned.offset(start);
-            let tab_count = start.matches('\t').count();
-            let tabs = tab_count * 2; // When tab width is 2.
-            dbg!(global_offset);
-            dbg!(global_offset + tabs - tab_count);
+            // let (start, lines) = count_preceding_lines(&source[..=global_offset]);
+            // let tab_count = start.matches('\t').count();
+            // let tabs = tab_count * 2; // When tab width is 2.
             if let ErrorKind::Custom(span, ..) = kind {
-                return BeemoError::ScanError(source.to_string(), (global_offset + tabs - tab_count, span), kind.to_owned());
+                return BeemoError::ScanError(
+                    spaced_source,
+                    (global_offset, span),
+                    kind.to_owned(),
+                );
             }
-            BeemoError::ScanError(source.to_string(), (global_offset + tabs - tab_count, 1), kind.to_owned())
+            BeemoError::ScanError(spaced_source, (global_offset, 0), kind.to_owned())
         })
 }
 
