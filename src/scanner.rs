@@ -40,7 +40,16 @@ pub enum ErrorKind {
     #[error("{0}")]
     Context(&'static str),
     #[error("{1}")]
-    Custom(usize, String),
+    Custom(usize, String, String),
+}
+
+impl ErrorKind {
+    fn help(&self) -> String {
+        match self {
+            ErrorKind::Custom(_, _, h) => h.to_string(),
+            _ => "No help.".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -68,9 +77,9 @@ impl<I> ParseError<I> for BeemoScanError<I> {
 }
 
 impl<I> BeemoScanError<I> {
-    pub fn custom(span: usize, input: I, msg: String) -> Self {
+    pub fn custom(span: usize, input: I, desc: String, help: String) -> Self {
         Self {
-            error: (input, ErrorKind::Custom(span, msg)),
+            error: (input, ErrorKind::Custom(span, desc, help)),
         }
     }
 }
@@ -136,7 +145,8 @@ fn identifier(input: &str) -> Result<TokenType> {
             Err(Failure(BeemoScanError::custom(
                 span,
                 input,
-                "Bad identifier".into(),
+                "Incorrect identifier".into(),
+                "Identifiers cannot start with numbers. Only alphabetic characters are allowed in this position.".into()
             )))
         }
         Err(e) => Err(e),
@@ -169,9 +179,13 @@ fn number(input: &str) -> Result<TokenType> {
 fn string(input: &str) -> Result<TokenType> {
     let (input, token) = char('"')(input)?;
     let (input, value) = take_till(|c| c == '"')(input)?;
-    let (input, token) = char::<_, BeemoScanError<&str>>('"')(input).or(Err(Failure(
-        BeemoScanError::custom(0, input, r#"Missing closing quote."#.to_string()),
-    )))?;
+    let (input, token) =
+        char::<_, BeemoScanError<&str>>('"')(input).or(Err(Failure(BeemoScanError::custom(
+            0,
+            input,
+            r#"Missing closing quote."#.to_string(),
+            r#"Did you forget '"'?"#.to_string(),
+        ))))?;
     Ok((input, TokenType::String(value.to_string())))
 }
 
@@ -230,19 +244,22 @@ fn scan_lines<'a>(
         .map_err(|e| {
             let (unscanned, kind): (&str, ErrorKind) = e.error;
             // Replace tabs with spaces due to miette issues.
-            let spaced_source = source.replace('\t', "    ").to_string();
+            let spaced_source = source.replace('\t', " ".repeat(4).as_str()).to_string();
             let global_offset = source.offset(unscanned);
-            // let (start, lines) = count_preceding_lines(&source[..=global_offset]);
-            // let tab_count = start.matches('\t').count();
-            // let tabs = tab_count * 2; // When tab width is 2.
             if let ErrorKind::Custom(span, ..) = kind {
                 return BeemoError::ScanError(
                     spaced_source,
                     (global_offset, span),
                     kind.to_owned(),
+                    kind.help(),
                 );
             }
-            BeemoError::ScanError(spaced_source, (global_offset, 0), kind.to_owned())
+            BeemoError::ScanError(
+                spaced_source,
+                (global_offset, 0),
+                kind.to_owned(),
+                "".into(),
+            )
         })
 }
 

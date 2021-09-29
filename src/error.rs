@@ -12,11 +12,12 @@ pub enum BeemoError {
     #[error("Parse error.")]
     ParseError(parser::ErrorKind),
     #[error("Scan error: {2}.")]
-    #[diagnostic(code(beemo::scanner))]
+    #[diagnostic(code(beemo::scanner), help("{3}"))]
     ScanError(
         #[source_code] String,
-        #[label = "This is the highlight"] (usize, usize),
+        #[label = "Here."] (usize, usize),
         scanner::ErrorKind,
+        String,
     ),
     #[error("Runtime error.")]
     RuntimeError(interpreter::ErrorKind),
