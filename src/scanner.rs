@@ -37,19 +37,9 @@ pub type Result<'a, T> = nom::IResult<&'a str, T, BeemoScanError<&'a str>>;
 pub enum ErrorKind {
     #[error("{0:?}")]
     Nom(NomErrorKind),
-    #[error("{0}")]
-    Context(&'static str),
     #[error("{1}")]
+    #[diagnostic(help("{2}"))]
     Custom(usize, String, String),
-}
-
-impl ErrorKind {
-    fn help(&self) -> String {
-        match self {
-            ErrorKind::Custom(_, _, h) => h.to_string(),
-            _ => "No help.".to_string(),
-        }
-    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -68,12 +58,6 @@ impl<I> ParseError<I> for BeemoScanError<I> {
         // other.errors.push((input, ErrorKind::Nom(kind)));
         other
     }
-
-    fn from_char(input: I, c: char) -> Self {
-        Self {
-            error: (input, ErrorKind::Context("char")),
-        }
-    }
 }
 
 impl<I> BeemoScanError<I> {
@@ -81,13 +65,6 @@ impl<I> BeemoScanError<I> {
         Self {
             error: (input, ErrorKind::Custom(span, desc, help)),
         }
-    }
-}
-
-impl<I> ContextError<I> for BeemoScanError<I> {
-    fn add_context(input: I, ctx: &'static str, mut other: Self) -> Self {
-        // other.errors.push((input, ErrorKind::Context(ctx)));
-        other
     }
 }
 
@@ -133,15 +110,14 @@ fn identifier(input: &str) -> Result<TokenType> {
         TokenType::Identifier(s.to_string())
     })(input)
     {
-        Ok((rest, t)) => Ok((rest, t)),
+        Ok((rest, t)) => {
+            let len = input.offset(rest);
+            Ok((rest, t))
+        }
         Err(nom::Err::Error(_)) => {
-            dbg!(input);
             let (next, _) = many_till::<_, _, _, (), _, _>(anychar, space1)(input)
                 .expect("Impossible to find a span.");
-
-            dbg!(next);
             let span = input.offset(next) - 1; // Do not count matched whitespace;
-            dbg!(span);
             Err(Failure(BeemoScanError::custom(
                 span,
                 input,
@@ -197,6 +173,8 @@ fn non_string(input: &str) -> Result<TokenType> {
     let (input, token) = alt((
         value(TokenType::Plus, tag("+")),
         value(TokenType::Multiply, tag("*")),
+        value(TokenType::Minus, tag("-")),
+        value(TokenType::Divide, tag("/")),
         value(TokenType::Colon, tag(":")),
         value(TokenType::OpeningParen, tag("(")),
         value(TokenType::Comma, tag(",")),
@@ -244,21 +222,18 @@ fn scan_lines<'a>(
         .map_err(|e| {
             let (unscanned, kind): (&str, ErrorKind) = e.error;
             // Replace tabs with spaces due to miette issues.
+            let before = &source[..source.offset(unscanned)];
+            let tab_count = before.matches('\t').count();
             let spaced_source = source.replace('\t', " ".repeat(4).as_str()).to_string();
-            let global_offset = source.offset(unscanned);
-            if let ErrorKind::Custom(span, ..) = kind {
-                return BeemoError::ScanError(
-                    spaced_source,
-                    (global_offset, span),
-                    kind.to_owned(),
-                    kind.help(),
-                );
+            let global_offset = source.offset(unscanned) + tab_count * 4 - tab_count;
+            if let ErrorKind::Custom(span, desc, help) = kind {
+                return BeemoError::ScanError(spaced_source, (global_offset, span), desc, help);
             }
             BeemoError::ScanError(
                 spaced_source,
                 (global_offset, 0),
-                kind.to_owned(),
-                "".into(),
+                "Unexpected token".into(),
+                "This is likely an internal scanner error.".into(),
             )
         })
 }

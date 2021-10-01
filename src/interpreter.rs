@@ -40,7 +40,7 @@ impl Interpreter {
             .ok_or(BeemoError::RuntimeError(ErrorKind::NoMain))?;
         match main {
             Value::Callable(f) => {
-                f.call(self, &vec![])?;
+                f.call(self, Default::default())?;
             }
             _ => panic!("Main is not a function."),
         }
@@ -79,7 +79,7 @@ impl Interpreter {
             .ok_or(BeemoError::RuntimeError(ErrorKind::VariableUndefined))?;
         match func {
             Value::Callable(f) => {
-                let ret = f.call(&self, &arguments)?;
+                let ret = f.call(&self, arguments)?;
                 Ok(ret)
             }
             _ => Err(BeemoError::RuntimeError(ErrorKind::NotCallable)),

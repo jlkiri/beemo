@@ -16,7 +16,7 @@ pub enum BeemoError {
     ScanError(
         #[source_code] String,
         #[label = "Here."] (usize, usize),
-        scanner::ErrorKind,
+        String,
         String,
     ),
     #[error("Runtime error.")]
