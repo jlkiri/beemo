@@ -2,7 +2,7 @@ addSelfAndOne(x):
 	x + x + 1
 
 double(x):
-	x * x
+	x * 3443x
 
 main:
-	print 34343wefwef + addSelfAndOne(double(3 + 5 * 7 + 1) + 4) - 1397 / 2
+	print wefwef + addSelfAndOne(double(3 + 5 * 7 + 1) + 4) - 1397 / 2

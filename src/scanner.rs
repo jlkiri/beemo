@@ -115,8 +115,9 @@ fn identifier(input: &str) -> Result<TokenType> {
             Ok((rest, t))
         }
         Err(nom::Err::Error(_)) => {
-            let (next, _) = many_till::<_, _, _, (), _, _>(anychar, space1)(input)
-                .expect("Impossible to find a span.");
+            let (next, _) =
+                many_till::<_, _, _, (), _, _>(anychar, alt((space1, line_ending)))(input)
+                    .expect("Impossible to find a span.");
             let span = input.offset(next) - 1; // Do not count matched whitespace;
             Err(Failure(BeemoScanError::custom(
                 span,
@@ -226,7 +227,9 @@ fn scan_lines<'a>(
             let tab_count = before.matches('\t').count();
             let spaced_source = source.replace('\t', " ".repeat(4).as_str()).to_string();
             let global_offset = source.offset(unscanned) + tab_count * 4 - tab_count;
+
             if let ErrorKind::Custom(span, desc, help) = kind {
+                dbg!((global_offset, span));
                 return BeemoError::ScanError(spaced_source, (global_offset, span), desc, help);
             }
             BeemoError::ScanError(
