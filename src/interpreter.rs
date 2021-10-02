@@ -53,6 +53,16 @@ impl Interpreter {
         Ok(())
     }
 
+    pub fn eval_cond_stmt(
+        &self,
+        cond: Expr,
+        if_branch: Vec<Stmt>,
+        else_branch: Option<Vec<Stmt>>,
+        env: &Environment,
+    ) -> Result<()> {
+        let condition = self.eval_expr(cond, env)?;
+    }
+
     pub fn eval_function_decl(&self, fun: Function) -> Result<()> {
         self.globals.define(fun.name.clone(), Value::Callable(fun));
         Ok(())
@@ -151,6 +161,9 @@ impl Interpreter {
         match stmt {
             Stmt::FunctionDeclaration(fun) => self.eval_function_decl(fun),
             Stmt::Print(val) => self.eval_print_stmt(val, env),
+            Stmt::Condition(cond, if_branch, else_branch) => {
+                self.eval_cond_stmt(cond, if_branch, else_branch, env)
+            }
             Stmt::Expression(expr) => {
                 self.eval_expr(expr.clone(), env)?;
                 Ok(())

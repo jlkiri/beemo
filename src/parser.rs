@@ -11,9 +11,13 @@ pub struct Parser<'a> {
     tokens: Peekable<Iter<'a, Token>>,
 }
 
+type IfBranch = Vec<Stmt>;
+type ElseBranch = Vec<Stmt>;
+
 #[derive(Debug, Clone)]
 pub enum Stmt {
     Print(Expr),
+    Condition(Expr, IfBranch, Option<ElseBranch>),
     Return(Expr),
     FunctionDeclaration(Function),
     Expression(Expr),
@@ -31,6 +35,7 @@ pub enum Value {
 pub enum Expr {
     Literal(Value),
     Variable(String),
+    Logical(TokenType, Box<Expr>, Box<Expr>),
     Binary(TokenType, Box<Expr>, Box<Expr>),
     Call(String, Vec<Expr>),
 }
@@ -196,11 +201,10 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn comparison_finish(&mut self, min_bp: u8) -> Result<Expr> {
+    fn term_finish(&mut self, min_bp: u8) -> Result<Expr> {
         let mut lhs = self.unary()?;
         loop {
             let op = match self.peek_token() {
-                None => break,
                 Some(Token { ty }) if self.is_op(&ty) => ty,
                 _ => break,
             };
@@ -209,14 +213,14 @@ impl<'a> Parser<'a> {
                 break;
             }
             self.read_token();
-            let rhs = self.comparison_finish(rbp)?;
+            let rhs = self.term_finish(rbp)?;
             lhs = Expr::Binary(op, Box::new(lhs), Box::new(rhs))
         }
         Ok(lhs)
     }
 
-    fn comparison(&mut self) -> Result<Expr> {
-        self.comparison_finish(0)
+    fn term(&mut self) -> Result<Expr> {
+        self.term_finish(0)
     }
 
     fn infix_binding_power(&self, op: &TokenType) -> (u8, u8) {
@@ -277,18 +281,76 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn comparison(&mut self) -> Result<Expr> {
+        let mut left = self.term()?;
+        while let Some(token) = self.read_token_if_any_of(&[
+            TokenType::GreaterThan,
+            TokenType::LessThan,
+            TokenType::LessEqual,
+            TokenType::GreaterEqual,
+        ]) {
+            let right = self.term()?;
+            left = Expr::Binary(token.ty, Box::new(left), Box::new(right));
+        }
+        Ok(left)
+    }
+
     fn equality(&mut self) -> Result<Expr> {
-        self.comparison()
+        let left = self.comparison()?;
+        while let Some(token) = self.read_token_if(&TokenType::EqualEqual) {
+            let right = self.comparison()?;
+            left = Expr::Binary(token.ty, Box::new(left), Box::new(right));
+        }
+        Ok(left)
     }
 
     fn expression(&mut self) -> Result<Expr> {
+        let left = self.equality()?;
+        while let Some(token) = self.read_token_if_any_of(&[
+            TokenType::Keyword("and".to_string()),
+            TokenType::Keyword("or".to_string()),
+        ]) {
+            let right = self.equality()?;
+            left = Expr::Logical(token.ty, Box::new(left), Box::new(right));
+        }
         self.equality()
+    }
+
+    fn else_branch(&mut self) -> Result<Option<Vec<Stmt>>> {
+        match self.peek_token() {
+            Some(Token {
+                ty: TokenType::Keyword(v),
+            }) if v == "else" => {
+                self.read_token();
+                self.read_token_if(&TokenType::Colon)
+                    .ok_or(self.err(ErrorKind::ExpectedColon))?;
+                let block = self.block()?;
+                self.read_token_if(&TokenType::Dedent)
+                    .ok_or(self.err(ErrorKind::ExpectedDedent))?;
+                Ok(Some(block))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    fn if_statement(&mut self) -> Result<Stmt> {
+        let expr = self.expression()?;
+        self.read_token_if(&TokenType::Colon)
+            .ok_or(self.err(ErrorKind::ExpectedColon))?;
+        self.read_token_if(&TokenType::Indent)
+            .ok_or(self.err(ErrorKind::ExpectedIndent))?;
+        let if_branch = self.block()?;
+        self.read_token_if(&TokenType::Dedent)
+            .ok_or(self.err(ErrorKind::ExpectedDedent))?;
+        let else_branch = self.else_branch()?;
+        Ok(Stmt::Condition(expr, if_branch, else_branch))
     }
 
     fn statement(&mut self) -> Result<Stmt> {
         match self.read_token_if_keyword() {
             Some(kw) => match kw.as_str() {
                 "print" => Ok(Stmt::Print(self.expression()?)),
+                "if" => self.if_statement(),
                 _ => todo!(),
             },
             None => Ok(Stmt::Expression(self.expression()?)),

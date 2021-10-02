@@ -23,14 +23,6 @@ pub enum BeemoError {
         Description,
         Help,
     ),
-    /* #[error("Scan error: {1}.")]
-    #[diagnostic(code(beemo::scanner), help("{0}"))]
-    ScanError(
-        String,
-        String,
-        #[source_code] String,
-        #[label = "Here."] (SpanStart, SpanEnd),
-    ), */
     #[error("Runtime error.")]
     RuntimeError(interpreter::ErrorKind),
     #[error("Internal error.")]

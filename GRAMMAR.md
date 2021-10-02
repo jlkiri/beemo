@@ -3,8 +3,10 @@ declaration := func
 
 func := identifier ('(' params? ')')? ':' block
 
-statement := return | print
+statement := return | print | condition | for | while
 return := 'return' expr
+print := 'print' expr
+condition := 'if' expr ':' block ('else' ':' block)?
 
 expr := equality (('or' | 'and') equality)*
 equality := comparison ('==' comparison)*
