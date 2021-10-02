@@ -13,7 +13,7 @@ type Description = String;
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum BeemoError {
-    #[error(transparent)]
+    #[error("Parser")]
     ParseError(parser::ErrorKind),
     #[error("Scan error: {2}.")]
     #[diagnostic(code(beemo::scanner), help("{3}"))]

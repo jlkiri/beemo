@@ -28,6 +28,7 @@ pub enum Value {
     String(String),
     Number(f32),
     Callable(Function),
+    Bool(bool),
     Unit,
 }
 
@@ -40,8 +41,7 @@ pub enum Expr {
     Call(String, Vec<Expr>),
 }
 
-#[derive(Debug, Error)]
-#[error("Whoops.")]
+#[derive(Debug)]
 pub enum ErrorKind {
     UnexpectedEof,
     UnexpectedToken,
@@ -55,6 +55,15 @@ pub enum ErrorKind {
     ExpectedIndent,
     ExpectedDedent,
     BadCall,
+}
+
+impl Value {
+    pub fn is_bool(&self) -> bool {
+        match self {
+            Value::Bool(..) => true,
+            _ => false,
+        }
+    }
 }
 
 impl<'a> Parser<'a> {
@@ -84,7 +93,11 @@ impl<'a> Parser<'a> {
     fn is_op(&self, ty: &TokenType) -> bool {
         matches!(
             ty,
-            TokenType::Plus | TokenType::Multiply | TokenType::Divide | TokenType::Minus
+            TokenType::Plus
+                | TokenType::Multiply
+                | TokenType::Divide
+                | TokenType::Minus
+                | TokenType::Modulo
         )
     }
 
@@ -99,9 +112,11 @@ impl<'a> Parser<'a> {
 
     fn read_token_if_ident(&mut self) -> Option<String> {
         self.tokens
-            .next_if(|t| matches!(t.ty, TokenType::Identifier(_)))
+            .next_if(|t| matches!(t.ty, TokenType::Identifier(..)))
             .and_then(|t| match t {
-                Token { ty } => Some(ty.string_value().unwrap().to_string()), // Safe unwrap.
+                Token { ty } => {
+                    Some(ty.string_value().unwrap().to_string()) // Safe unwrap.
+                }
                 _ => None,
             })
     }
@@ -225,8 +240,9 @@ impl<'a> Parser<'a> {
 
     fn infix_binding_power(&self, op: &TokenType) -> (u8, u8) {
         match op {
-            TokenType::Divide | TokenType::Multiply => (3, 4),
-            TokenType::Plus | TokenType::Minus => (1, 2),
+            TokenType::Divide | TokenType::Multiply => (4, 5),
+            TokenType::Plus | TokenType::Minus => (2, 3),
+            TokenType::Modulo => (1, 2),
             _ => todo!(),
         }
     }
@@ -296,16 +312,16 @@ impl<'a> Parser<'a> {
     }
 
     fn equality(&mut self) -> Result<Expr> {
-        let left = self.comparison()?;
+        let mut left = self.comparison()?;
         while let Some(token) = self.read_token_if(&TokenType::EqualEqual) {
             let right = self.comparison()?;
-            left = Expr::Binary(token.ty, Box::new(left), Box::new(right));
+            left = Expr::Binary(token.ty, Box::new(left), Box::new(right.clone()));
         }
         Ok(left)
     }
 
     fn expression(&mut self) -> Result<Expr> {
-        let left = self.equality()?;
+        let mut left = self.equality()?;
         while let Some(token) = self.read_token_if_any_of(&[
             TokenType::Keyword("and".to_string()),
             TokenType::Keyword("or".to_string()),
@@ -313,20 +329,18 @@ impl<'a> Parser<'a> {
             let right = self.equality()?;
             left = Expr::Logical(token.ty, Box::new(left), Box::new(right));
         }
-        self.equality()
+        Ok(left)
     }
 
     fn else_branch(&mut self) -> Result<Option<Vec<Stmt>>> {
         match self.peek_token() {
             Some(Token {
-                ty: TokenType::Keyword(v),
-            }) if v == "else" => {
+                ty: TokenType::Keyword(k),
+            }) if k == "else" => {
                 self.read_token();
                 self.read_token_if(&TokenType::Colon)
                     .ok_or(self.err(ErrorKind::ExpectedColon))?;
                 let block = self.block()?;
-                self.read_token_if(&TokenType::Dedent)
-                    .ok_or(self.err(ErrorKind::ExpectedDedent))?;
                 Ok(Some(block))
             }
             _ => Ok(None),
@@ -336,12 +350,8 @@ impl<'a> Parser<'a> {
     fn if_statement(&mut self) -> Result<Stmt> {
         let expr = self.expression()?;
         self.read_token_if(&TokenType::Colon)
-            .ok_or(self.err(ErrorKind::ExpectedColon))?;
-        self.read_token_if(&TokenType::Indent)
-            .ok_or(self.err(ErrorKind::ExpectedIndent))?;
+            .ok_or(self.err(ErrorKind::ExpectedColon));
         let if_branch = self.block()?;
-        self.read_token_if(&TokenType::Dedent)
-            .ok_or(self.err(ErrorKind::ExpectedDedent))?;
         let else_branch = self.else_branch()?;
         Ok(Stmt::Condition(expr, if_branch, else_branch))
     }

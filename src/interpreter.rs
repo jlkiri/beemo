@@ -11,8 +11,10 @@ use crate::{
 pub enum ErrorKind {
     WrongOperand,
     NotInfixOperator,
+    NotBoolean,
     ParameterArgumentMismatch,
     NothingReturned,
+    NotComparable,
     VariableUndefined,
     ReturnNotExpression,
     NotCallable,
@@ -61,6 +63,19 @@ impl Interpreter {
         env: &Environment,
     ) -> Result<()> {
         let condition = self.eval_expr(cond, env)?;
+        if !condition.is_bool() {
+            return Err(BeemoError::RuntimeError(ErrorKind::NotBoolean));
+        }
+        match condition {
+            Value::Bool(true) => self.eval_block(if_branch, env)?,
+            Value::Bool(false) => {
+                if else_branch.is_some() {
+                    self.eval_block(else_branch.unwrap(), env)?;
+                }
+            }
+            _ => unreachable!(),
+        }
+        Ok(())
     }
 
     pub fn eval_function_decl(&self, fun: Function) -> Result<()> {
@@ -96,6 +111,41 @@ impl Interpreter {
         }
     }
 
+    fn eval_logical_expr(
+        &self,
+        op: TokenType,
+        lhs: Expr,
+        rhs: Expr,
+        env: &Environment,
+    ) -> Result<Value> {
+        let lexpr = self.eval_expr(lhs, env)?;
+        match op {
+            TokenType::Keyword(kw) if kw == "or" => {
+                if matches!(lexpr, Value::Bool(true)) {
+                    Ok(lexpr)
+                } else {
+                    let rexpr = self.eval_expr(rhs, env)?;
+                    match (lexpr, rexpr) {
+                        (Value::Bool(l), Value::Bool(r)) => Ok(Value::Bool(l || r)),
+                        _ => Err(BeemoError::RuntimeError(ErrorKind::WrongOperand)),
+                    }
+                }
+            }
+            TokenType::Keyword(kw) if kw == "and" => {
+                if matches!(lexpr, Value::Bool(false)) {
+                    Ok(lexpr)
+                } else {
+                    let rexpr = self.eval_expr(rhs, env)?;
+                    match (lexpr, rexpr) {
+                        (Value::Bool(l), Value::Bool(r)) => Ok(Value::Bool(l && r)),
+                        _ => Err(BeemoError::RuntimeError(ErrorKind::WrongOperand)),
+                    }
+                }
+            }
+            _ => Err(BeemoError::RuntimeError(ErrorKind::NotInfixOperator)),
+        }
+    }
+
     fn eval_binary_expr(
         &self,
         op: TokenType,
@@ -122,6 +172,30 @@ impl Interpreter {
                 (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l / r)),
                 _ => Err(BeemoError::RuntimeError(ErrorKind::WrongOperand)),
             },
+            TokenType::EqualEqual => match (lexpr, rexpr) {
+                (Value::Number(l), Value::Number(r)) => Ok(Value::Bool(l == r)),
+                _ => Err(BeemoError::RuntimeError(ErrorKind::NotComparable)),
+            },
+            TokenType::GreaterThan => match (lexpr, rexpr) {
+                (Value::Number(l), Value::Number(r)) => Ok(Value::Bool(l > r)),
+                _ => Err(BeemoError::RuntimeError(ErrorKind::NotComparable)),
+            },
+            TokenType::GreaterEqual => match (lexpr, rexpr) {
+                (Value::Number(l), Value::Number(r)) => Ok(Value::Bool(l >= r)),
+                _ => Err(BeemoError::RuntimeError(ErrorKind::NotComparable)),
+            },
+            TokenType::LessThan => match (lexpr, rexpr) {
+                (Value::Number(l), Value::Number(r)) => Ok(Value::Bool(l < r)),
+                _ => Err(BeemoError::RuntimeError(ErrorKind::NotComparable)),
+            },
+            TokenType::LessEqual => match (lexpr, rexpr) {
+                (Value::Number(l), Value::Number(r)) => Ok(Value::Bool(l <= r)),
+                _ => Err(BeemoError::RuntimeError(ErrorKind::NotComparable)),
+            },
+            TokenType::Modulo => match (lexpr, rexpr) {
+                (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l % r)),
+                _ => Err(BeemoError::RuntimeError(ErrorKind::NotComparable)),
+            },
             _ => Err(BeemoError::RuntimeError(ErrorKind::NotInfixOperator)),
         }
     }
@@ -132,6 +206,7 @@ impl Interpreter {
             Expr::Call(callee, args) => self.eval_call_expr(callee, args, env),
             Expr::Literal(value) => Ok(value),
             Expr::Binary(op, lhs, rhs) => self.eval_binary_expr(op, *lhs, *rhs, env),
+            Expr::Logical(op, lhs, rhs) => self.eval_logical_expr(op, *lhs, *rhs, env),
         }
     }
 

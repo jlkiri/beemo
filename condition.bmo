@@ -1,0 +1,8 @@
+add_one_if_odd(num):
+	if num % 2 == 0:
+		print num
+	else:
+		print num + 1
+
+main:
+	print add_one_if_odd(7)

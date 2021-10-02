@@ -5,4 +5,4 @@ double(x):
 	x * x
 
 main:
-	print 4add_self_and_one(double(3 + 5 * 7 + 1) + 4) - 1397 / 2
+	print add_self_and_one(double(3 + 5 * 7 + 1) + 4) - 1397 / 2

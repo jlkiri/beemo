@@ -24,7 +24,8 @@ fn main() -> Result<()> {
     let tokens = scan(&source)?;
     // dbg!(&tokens);
     let mut parser = Parser::new(tokens.iter().peekable());
-    let res = parser.parse()?;
+
+    let res = parser.parse().expect("aaaaaa");
     let interpreter = Interpreter::new();
     interpreter.interpret(res)?;
     Ok(())
