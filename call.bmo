@@ -1,8 +1,8 @@
-addSelfAndOne(x):
+add_self_and_one(x):
 	x + x + 1
 
 double(x):
-	x * 3443x
+	x * x
 
 main:
-	print wefwef + addSelfAndOne(double(3 + 5 * 7 + 1) + 4) - 1397 / 2
+	print 4add_self_and_one(double(3 + 5 * 7 + 1) + 4) - 1397 / 2

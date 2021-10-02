@@ -5,6 +5,8 @@ use crate::function::Function;
 use crate::scanner::TokenType;
 use crate::{error::*, scanner::Token};
 
+use thiserror::Error;
+
 pub struct Parser<'a> {
     tokens: Peekable<Iter<'a, Token>>,
 }
@@ -33,7 +35,8 @@ pub enum Expr {
     Call(String, Vec<Expr>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
+#[error("Whoops.")]
 pub enum ErrorKind {
     UnexpectedEof,
     UnexpectedToken,
@@ -235,14 +238,6 @@ impl<'a> Parser<'a> {
             _ => todo!(),
         }
     }
-
-    /* fn term(&mut self) -> Result<Expr> {
-        self.factor()
-    }
-
-    fn factor(&mut self) -> Result<Expr> {
-        self.unary()
-    } */
 
     fn unary(&mut self) -> Result<Expr> {
         self.call()

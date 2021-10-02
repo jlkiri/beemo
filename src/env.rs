@@ -42,6 +42,7 @@ impl Environment {
     }
 
     pub fn define(&self, ident: String, value: Value) {
+        //dbg!(&ident, &value);
         let inner = &self
             .0
             .as_ref()

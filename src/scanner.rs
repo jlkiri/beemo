@@ -31,23 +31,23 @@ use thiserror::Error;
 
 use crate::error::BeemoError;
 
-pub type Result<'a, T> = nom::IResult<&'a str, T, BeemoScanError<&'a str>>;
+pub type Result<'a, T> = nom::IResult<&'a str, T, NomScanError<&'a str>>;
+type Description = String;
+type Help = String;
+type TokenLength = usize;
 
-#[derive(Debug, PartialEq, Diagnostic, Error, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum ErrorKind {
-    #[error("{0:?}")]
     Nom(NomErrorKind),
-    #[error("{1}")]
-    #[diagnostic(help("{2}"))]
-    Custom(usize, String, String),
+    Custom(TokenLength, Description, Help),
 }
 
-#[derive(Debug, PartialEq)]
-pub struct BeemoScanError<I> {
+#[derive(Debug, PartialEq, Error)]
+pub struct NomScanError<I> {
     pub error: (I, ErrorKind),
 }
 
-impl<I> ParseError<I> for BeemoScanError<I> {
+impl<I> ParseError<I> for NomScanError<I> {
     fn from_error_kind(input: I, kind: NomErrorKind) -> Self {
         Self {
             error: (input, ErrorKind::Nom(kind)),
@@ -60,7 +60,7 @@ impl<I> ParseError<I> for BeemoScanError<I> {
     }
 }
 
-impl<I> BeemoScanError<I> {
+impl<I> NomScanError<I> {
     pub fn custom(span: usize, input: I, desc: String, help: String) -> Self {
         Self {
             error: (input, ErrorKind::Custom(span, desc, help)),
@@ -106,20 +106,26 @@ fn keyword(input: &str) -> Result<TokenType> {
 }
 
 fn identifier(input: &str) -> Result<TokenType> {
-    match map(recognize(pair(alpha1, alphanumeric0)), |s: &str| {
-        TokenType::Identifier(s.to_string())
-    })(input)
+    match map(
+        recognize(pair(
+            alpha1,
+            take_while(|c: char| c.is_alphanumeric() || c == '_'),
+        )),
+        |s: &str| TokenType::Identifier(s.to_string()),
+    )(input)
     {
         Ok((rest, t)) => {
             let len = input.offset(rest);
             Ok((rest, t))
         }
         Err(nom::Err::Error(_)) => {
-            let (next, _) =
-                many_till::<_, _, _, (), _, _>(anychar, alt((space1, line_ending)))(input)
-                    .expect("Impossible to find a span.");
+            let (next, _) = many_till::<_, _, _, (), _, _>(
+                anychar,
+                alt((space1, tag("("))), /* alt((space1, line_ending)) */
+            )(input)
+            .expect("Impossible to find a span.");
             let span = input.offset(next) - 1; // Do not count matched whitespace;
-            Err(Failure(BeemoScanError::custom(
+            Err(Failure(NomScanError::custom(
                 span,
                 input,
                 "Incorrect identifier".into(),
@@ -154,13 +160,13 @@ fn number(input: &str) -> Result<TokenType> {
 }
 
 fn string(input: &str) -> Result<TokenType> {
-    let (input, token) = char('"')(input)?;
-    let (input, value) = take_till(|c| c == '"')(input)?;
+    let (lquote, token) = char('"')(input)?;
+    let (input, value) = take_till(|c| c == '"')(lquote)?;
     let (input, token) =
-        char::<_, BeemoScanError<&str>>('"')(input).or(Err(Failure(BeemoScanError::custom(
+        char::<_, NomScanError<&str>>('"')(input).or(Err(Failure(NomScanError::custom(
             0,
-            input,
-            r#"Missing closing quote."#.to_string(),
+            lquote,
+            r#"Missing closing quote"#.to_string(),
             r#"Did you forget '"'?"#.to_string(),
         ))))?;
     Ok((input, TokenType::String(value.to_string())))
@@ -228,9 +234,14 @@ fn scan_lines<'a>(
             let spaced_source = source.replace('\t', " ".repeat(4).as_str()).to_string();
             let global_offset = source.offset(unscanned) + tab_count * 4 - tab_count;
 
-            if let ErrorKind::Custom(span, desc, help) = kind {
-                dbg!((global_offset, span));
-                return BeemoError::ScanError(spaced_source, (global_offset, span), desc, help);
+            if let ErrorKind::Custom(token_len, desc, help) = kind {
+                dbg!((global_offset, token_len));
+                return BeemoError::ScanError(
+                    spaced_source,
+                    (global_offset, token_len),
+                    desc,
+                    help,
+                );
             }
             BeemoError::ScanError(
                 spaced_source,
