@@ -94,15 +94,35 @@ pub enum TokenType {
     Eof,
 }
 
+impl TokenType {
+    pub fn string_value(&self) -> Option<&str> {
+        match self {
+            TokenType::Keyword(v) => Some(v),
+            TokenType::String(v) => Some(v),
+            TokenType::Identifier(v) => Some(v),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug)]
 struct IndentationCounter {
     current: isize,
 }
 
 fn keyword(input: &str) -> Result<TokenType> {
-    map(alt((tag("return"), tag("print"))), |k: &str| {
-        TokenType::Keyword(k.to_string())
-    })(input)
+    map(
+        alt((
+            tag("return"),
+            tag("print"),
+            tag("while"),
+            tag("if"),
+            tag("else"),
+            tag("for"),
+            tag("in"),
+        )),
+        |k: &str| TokenType::Keyword(k.to_string()),
+    )(input)
 }
 
 fn identifier(input: &str) -> Result<TokenType> {

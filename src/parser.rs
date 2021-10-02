@@ -93,42 +93,30 @@ impl<'a> Parser<'a> {
     }
 
     fn read_token_if_ident(&mut self) -> Option<String> {
-        match self.tokens.peek() {
-            Some(token) => match &token.ty {
-                TokenType::Identifier(value) => {
-                    self.read_token();
-                    return Some(value.clone());
-                }
+        self.tokens
+            .next_if(|t| matches!(t.ty, TokenType::Identifier(_)))
+            .and_then(|t| match t {
+                Token { ty } => Some(ty.string_value().unwrap().to_string()), // Safe unwrap.
                 _ => None,
-            },
-            _ => None,
-        }
+            })
     }
 
     fn read_token_if_string(&mut self) -> Option<String> {
-        match self.tokens.peek() {
-            Some(token) => match &token.ty {
-                TokenType::String(s) => {
-                    self.read_token();
-                    return Some(s.clone());
-                }
+        self.tokens
+            .next_if(|t| matches!(t.ty, TokenType::String(_)))
+            .and_then(|t| match t {
+                Token { ty } => Some(ty.string_value().unwrap().to_string()), // Safe unwrap.
                 _ => None,
-            },
-            _ => None,
-        }
+            })
     }
 
     fn read_token_if_keyword(&mut self) -> Option<String> {
-        match self.tokens.peek() {
-            Some(token) => match &token.ty {
-                TokenType::Keyword(kw) => {
-                    self.read_token();
-                    return Some(kw.clone());
-                }
+        self.tokens
+            .next_if(|t| matches!(t.ty, TokenType::Keyword(_)))
+            .and_then(|t| match t {
+                Token { ty } => Some(ty.string_value().unwrap().to_string()), // Safe unwrap.
                 _ => None,
-            },
-            _ => None,
-        }
+            })
     }
 
     fn read_token_if_float(&mut self) -> Option<f32> {
