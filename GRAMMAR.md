@@ -8,14 +8,16 @@ return := 'return' expr
 print := 'print' expr
 condition := 'if' expr ':' block ('else' ':' block)?
 
-expr := equality (('or' | 'and') equality)*
+expr := assignment
+assignment := logical ('->' identifier)?
+logical := equality (('or' | 'and') equality)*
 equality := comparison ('==' comparison)*
 comparison := term (('>' | '<' | '>=' | '<=') term)*
 term := factor (('+' | '-') factor)*
 factor := unary (('*' | '/') unary)*
 unary := ('!' | '-') unary | call
 call := primary ('(' arguments? ')')*
-primary := identifier | 'true' | 'false' | number
+primary := identifier | 'true' | 'false' | number | '(' expr ')'
 ```
 
 ```

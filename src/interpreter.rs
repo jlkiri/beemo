@@ -11,7 +11,9 @@ use crate::{
 pub enum ErrorKind {
     WrongOperand,
     NotInfixOperator,
+    NotUnaryOperator,
     NotBoolean,
+    NotNumber,
     ParameterArgumentMismatch,
     NothingReturned,
     NotComparable,
@@ -146,6 +148,26 @@ impl Interpreter {
         }
     }
 
+    fn eval_unary_expr(&self, op: TokenType, expr: Expr, env: &Environment) -> Result<Value> {
+        match op {
+            TokenType::Bang => {
+                let bool = self.eval_expr(expr, env)?;
+                match bool {
+                    Value::Bool(bool) => Ok(Value::Bool(!bool)),
+                    _ => Err(BeemoError::RuntimeError(ErrorKind::NotBoolean)),
+                }
+            }
+            TokenType::Minus => {
+                let val = self.eval_expr(expr, env)?;
+                match val {
+                    Value::Number(num) => Ok(Value::Number(-num)),
+                    _ => Err(BeemoError::RuntimeError(ErrorKind::NotNumber)),
+                }
+            }
+            _ => Err(BeemoError::RuntimeError(ErrorKind::NotUnaryOperator)),
+        }
+    }
+
     fn eval_binary_expr(
         &self,
         op: TokenType,
@@ -200,11 +222,25 @@ impl Interpreter {
         }
     }
 
+    fn eval_assignment_expr(
+        &self,
+        lvalue: String,
+        rvalue: Expr,
+        env: &Environment,
+    ) -> Result<Value> {
+        let evaluated = self.eval_expr(rvalue, env)?;
+        env.define(lvalue, evaluated.clone());
+        Ok(evaluated)
+    }
+
     pub fn eval_expr(&self, expr: Expr, env: &Environment) -> Result<Value> {
         match expr {
             Expr::Variable(name) => self.eval_var_expr(name, env),
             Expr::Call(callee, args) => self.eval_call_expr(callee, args, env),
             Expr::Literal(value) => Ok(value),
+            Expr::Assignment(lvalue, rvalue) => self.eval_assignment_expr(lvalue, *rvalue, env),
+            Expr::Grouping(expr) => self.eval_expr(*expr, env),
+            Expr::Unary(op, expr) => self.eval_unary_expr(op, *expr, env),
             Expr::Binary(op, lhs, rhs) => self.eval_binary_expr(op, *lhs, *rhs, env),
             Expr::Logical(op, lhs, rhs) => self.eval_logical_expr(op, *lhs, *rhs, env),
         }

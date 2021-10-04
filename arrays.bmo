@@ -1,0 +1,7 @@
+greet(person):
+	print "Hello,"
+	print person
+
+main:
+	"jlkiri" -> a
+	greet(a)

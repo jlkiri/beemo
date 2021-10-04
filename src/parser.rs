@@ -36,6 +36,9 @@ pub enum Value {
 #[derive(Debug, Clone)]
 pub enum Expr {
     Literal(Value),
+    Grouping(Box<Expr>),
+    Assignment(String, Box<Expr>),
+    Unary(TokenType, Box<Expr>),
     Variable(String),
     Logical(TokenType, Box<Expr>, Box<Expr>),
     Binary(TokenType, Box<Expr>, Box<Expr>),
@@ -46,10 +49,12 @@ pub enum Expr {
 pub enum ErrorKind {
     UnexpectedEof,
     UnexpectedToken,
+    NotAssignable,
     ExpectedFunctionName,
     ExpectedArgument,
     BadLiteral,
     MissingClosingBracket,
+    MissingClosingParen,
     MissingClosingParenInCall(Token),
     Internal,
     ExpectedColon,
@@ -249,6 +254,10 @@ impl<'a> Parser<'a> {
     }
 
     fn unary(&mut self) -> Result<Expr> {
+        if let Some(t) = self.read_token_if_any_of(&[TokenType::Bang, TokenType::Minus]) {
+            let expr = self.unary()?;
+            return Ok(Expr::Unary(t.ty, Box::new(expr)));
+        }
         self.call()
     }
 
@@ -297,6 +306,21 @@ impl<'a> Parser<'a> {
             return Ok(Expr::Literal(Value::String(s)));
         }
 
+        if let Some(bool) = self.read_token_if_keyword() {
+            match bool.as_str() {
+                "true" => return Ok(Expr::Literal(Value::Bool(true))),
+                "false" => return Ok(Expr::Literal(Value::Bool(false))),
+                _ => return Err(self.err(ErrorKind::UnexpectedToken)),
+            }
+        }
+
+        if self.read_token_if(&TokenType::OpeningParen).is_some() {
+            let group = self.expression()?;
+            self.read_token_if(&TokenType::ClosingParen)
+                .ok_or(self.err(ErrorKind::MissingClosingParen))?;
+            return Ok(Expr::Grouping(Box::new(group)));
+        }
+
         match self.read_token_if_ident() {
             Some(v) => Ok(Expr::Variable(v)),
             None => Err(self.err(ErrorKind::BadLiteral)),
@@ -326,7 +350,7 @@ impl<'a> Parser<'a> {
         Ok(left)
     }
 
-    fn expression(&mut self) -> Result<Expr> {
+    fn logical(&mut self) -> Result<Expr> {
         let mut left = self.equality()?;
         while let Some(token) = self.read_token_if_any_of(&[
             TokenType::Keyword("and".to_string()),
@@ -336,6 +360,23 @@ impl<'a> Parser<'a> {
             left = Expr::Logical(token.ty, Box::new(left), Box::new(right));
         }
         Ok(left)
+    }
+
+    fn assignment(&mut self) -> Result<Expr> {
+        let rvalue = self.logical()?;
+        if self.read_token_if(&TokenType::Assign).is_some() {
+            match self.read_token_if_ident() {
+                Some(lvalue) => Ok(Expr::Assignment(lvalue, Box::new(rvalue))),
+                None => Err(self.err(ErrorKind::NotAssignable))?,
+            }
+        } else {
+            Ok(rvalue)
+        }
+    }
+
+    fn expression(&mut self) -> Result<Expr> {
+        let expr = self.assignment()?;
+        Ok(expr)
     }
 
     fn else_branch(&mut self) -> Result<Option<Vec<Stmt>>> {
@@ -356,7 +397,7 @@ impl<'a> Parser<'a> {
     fn if_statement(&mut self) -> Result<Stmt> {
         let expr = self.expression()?;
         self.read_token_if(&TokenType::Colon)
-            .ok_or(self.err(ErrorKind::ExpectedColon));
+            .ok_or(self.err(ErrorKind::ExpectedColon))?;
         let if_branch = self.block()?;
         let else_branch = self.else_branch()?;
         Ok(Stmt::Condition(expr, if_branch, else_branch))

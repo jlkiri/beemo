@@ -93,6 +93,8 @@ pub enum TokenType {
     GreaterEqual,
     LessEqual,
     LessThan,
+    Assign,
+    Bang,
     OpeningParen,
     ClosingParen,
     Eof,
@@ -121,6 +123,8 @@ fn keyword(input: &str) -> Result<TokenType> {
             tag("print"),
             tag("while"),
             tag("if"),
+            tag("true"),
+            tag("false"),
             tag("else"),
             tag("for"),
             tag("in"),
@@ -138,10 +142,7 @@ fn identifier(input: &str) -> Result<TokenType> {
         |s: &str| TokenType::Identifier(s.to_string()),
     )(input)
     {
-        Ok((rest, t)) => {
-            let len = input.offset(rest);
-            Ok((rest, t))
-        }
+        Ok((rest, t)) => Ok((rest, t)),
         Err(nom::Err::Error(_)) => {
             let (next, _) = many_till::<_, _, _, (), _, _>(
                 anychar,
@@ -202,11 +203,13 @@ fn maybe_string(input: &str) -> Result<TokenType> {
 
 fn non_string(input: &str) -> Result<TokenType> {
     let (input, token) = alt((
+        value(TokenType::Assign, tag("->")),
         value(TokenType::Plus, tag("+")),
         value(TokenType::Multiply, tag("*")),
         value(TokenType::Minus, tag("-")),
         value(TokenType::Divide, tag("/")),
         value(TokenType::Colon, tag(":")),
+        value(TokenType::Bang, tag("!")),
         value(TokenType::OpeningParen, tag("(")),
         value(TokenType::Comma, tag(",")),
         value(TokenType::Modulo, tag("%")),
@@ -239,8 +242,8 @@ fn count_preceding_lines(input: &str) -> (&str, usize) {
     (rest, count)
 }
 
-fn scan_lines<'a>(
-    source: &'a str,
+fn scan_lines(
+    source: &str,
     counter: &mut IndentationCounter,
 ) -> std::result::Result<Vec<TokenType>, BeemoError> {
     let indent = |i| indentation(i, counter);

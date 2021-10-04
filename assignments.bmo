@@ -1,0 +1,13 @@
+greet(person):
+	print "Hello,"
+	print person
+
+sum(a, b):
+	a + b
+
+main:
+	"jlkiri" -> a
+	1 -> one
+	2 -> two
+	greet(a)
+	print sum(one, two)

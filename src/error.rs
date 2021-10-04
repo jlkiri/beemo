@@ -3,7 +3,6 @@ use thiserror::Error;
 
 use crate::interpreter;
 use crate::parser;
-use crate::scanner;
 
 pub type Result<T> = std::result::Result<T, BeemoError>;
 type TokenLength = usize;
