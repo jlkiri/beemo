@@ -232,6 +232,19 @@ impl Interpreter {
         Ok(())
     }
 
+    fn eval_while_stmt(&self, cond: Expr, body: Vec<Stmt>, env: &Environment) -> Result<()> {
+        dbg!(&cond);
+        let mut condition = self.eval_expr(cond.clone(), env)?;
+
+        while matches!(condition, Value::Bool(true)) {
+            for stmt in body.iter() {
+                self.eval_stmt(stmt.clone(), env)?;
+            }
+            condition = self.eval_expr(cond.clone(), env)?;
+        }
+        Ok(())
+    }
+
     fn eval_stmt_finish(&self, stmt: Stmt, env: &Environment) -> Result<()> {
         match stmt {
             Stmt::FunctionDeclaration(fun) => self.eval_function_decl(fun),
@@ -239,6 +252,7 @@ impl Interpreter {
             Stmt::Condition(cond, if_branch, else_branch) => {
                 self.eval_cond_stmt(cond, if_branch, else_branch, env)
             }
+            Stmt::While(cond, block) => self.eval_while_stmt(cond, block, env),
             Stmt::Expression(expr) => {
                 self.eval_expr(expr.clone(), env)?;
                 Ok(())

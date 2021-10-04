@@ -1,5 +1,3 @@
-#![allow(warnings)]
-
 mod env;
 mod error;
 mod function;

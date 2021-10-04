@@ -20,6 +20,7 @@ pub enum Stmt {
     Condition(Expr, IfBranch, Option<ElseBranch>),
     Return(Expr),
     FunctionDeclaration(Function),
+    While(Expr, Vec<Stmt>),
     Expression(Expr),
 }
 
@@ -258,7 +259,15 @@ impl<'a> Parser<'a> {
     fn call(&mut self) -> Result<Expr> {
         let lit = self.literal()?;
         if self.read_token_if(&TokenType::OpeningParen).is_some() {
+            let callee = match lit {
+                Expr::Variable(callee) => callee,
+                _ => Err(self.err(ErrorKind::UnexpectedToken))?,
+            };
+
             let mut arguments = vec![];
+            if self.read_token_if(&TokenType::ClosingParen).is_some() {
+                return Ok(Expr::Call(callee, arguments));
+            }
             while {
                 let arg = self
                     .expression()
@@ -273,10 +282,7 @@ impl<'a> Parser<'a> {
                     let t = self.peek_token().expect("Unexpected eof.");
                     self.err(ErrorKind::MissingClosingParenInCall(t))
                 })?;
-            match lit {
-                Expr::Variable(callee) => Ok(Expr::Call(callee, arguments)),
-                _ => Err(self.err(ErrorKind::UnexpectedToken)),
-            }
+            Ok(Expr::Call(callee, arguments))
         } else {
             Ok(lit)
         }
@@ -356,11 +362,20 @@ impl<'a> Parser<'a> {
         Ok(Stmt::Condition(expr, if_branch, else_branch))
     }
 
+    fn while_statement(&mut self) -> Result<Stmt> {
+        let condition = self.expression()?;
+        self.read_token_if(&TokenType::Colon)
+            .ok_or(self.err(ErrorKind::ExpectedColon))?;
+        let block = self.block()?;
+        Ok(Stmt::While(condition, block))
+    }
+
     fn statement(&mut self) -> Result<Stmt> {
         match self.read_token_if_keyword() {
             Some(kw) => match kw.as_str() {
                 "print" => Ok(Stmt::Print(self.expression()?)),
                 "if" => self.if_statement(),
+                "while" => self.while_statement(),
                 _ => todo!(),
             },
             None => Ok(Stmt::Expression(self.expression()?)),
