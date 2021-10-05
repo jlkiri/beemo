@@ -23,6 +23,7 @@ fn main() -> Result<()> {
     let mut parser = Parser::new(tokens.iter().peekable());
 
     let res = parser.parse().expect("aaaaaa");
+    dbg!(&res);
     let mut interpreter = Interpreter::new();
     interpreter.interpret(res).expect("derp");
     Ok(())

@@ -21,8 +21,11 @@ impl Function {
             env.define(param.to_string(), arg)
         }
         interpreter.eval_block(self.body.clone(), &mut env)?;
-        env.get("return").ok_or(BeemoError::RuntimeError(
-            interpreter::ErrorKind::NothingReturned,
-        ))
+        match env.get("return") {
+            Some(ret) => Ok(ret),
+            _ => env.get("unit_return").ok_or(BeemoError::RuntimeError(
+                interpreter::ErrorKind::NothingReturned,
+            )),
+        }
     }
 }

@@ -23,7 +23,7 @@ impl Environment {
         let node = Node {
             inner: RefCell::new(HashMap::new()),
             parent: Environment(None),
-            len: 1,
+            len: 0,
         };
         Self(Some(Rc::new(node)))
     }
@@ -65,10 +65,10 @@ impl Environment {
         let mut env = self.clone();
         while {
             let node = env.node();
-            node.is_some() && 
-                node.and_then(|node| {
-                    node.inner.borrow().get(ident).cloned()
-                }).is_none()
+            node.is_some()
+                && node
+                    .and_then(|node| node.inner.borrow().get(ident).cloned())
+                    .is_none()
         } {
             env = env.parent();
         }

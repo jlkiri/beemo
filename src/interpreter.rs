@@ -88,15 +88,15 @@ impl Interpreter {
         else_branch: Option<Vec<Stmt>>,
         env: &Environment,
     ) -> Result<()> {
-        let condition = self.eval_expr(cond, env)?;
+        let condition = self.eval_expr(cond, &env)?;
         if !condition.is_bool() {
             return Err(BeemoError::RuntimeError(ErrorKind::NotBoolean));
         }
         match condition {
-            Value::Bool(true) => self.eval_block(if_branch, env)?,
+            Value::Bool(true) => self.eval_block(if_branch, &env)?,
             Value::Bool(false) => {
                 if else_branch.is_some() {
-                    self.eval_block(else_branch.unwrap(), env)?;
+                    self.eval_block(else_branch.unwrap(), &env)?;
                 }
             }
             _ => unreachable!(),
@@ -339,57 +339,50 @@ impl Interpreter {
 
     pub fn eval_block(&self, stmts: Vec<Stmt>, env: &Environment) -> Result<()> {
         let length = stmts.len();
-        self.increase_block_level();
         for (i, stmt) in stmts.into_iter().enumerate() {
-            dbg!(self.block_level());
-            if env.get("return").is_some() {
-                dbg!("returned");
-                return Ok(());
-            }
-
-            let is_last = i == length - 1 && self.block_level() == 1.0;
-
+            let is_last = i == length - 1; // Function block.
             match stmt {
-                Stmt::Expression(expr) if is_last => {
-                    let result = self.eval_expr(expr, env)?;
-                    self.decrease_block_level();
+                Stmt::Expression(e @ Expr::Variable(_)) if is_last => {
+                    let result = self.eval_expr(e, &env)?;
+                    env.define("return".to_string(), result);
+                    dbg!("returned implicitly");
+                    return Ok(());
+                }
+                Stmt::Expression(e @ Expr::Literal(_)) if is_last => {
+                    let result = self.eval_expr(e, &env)?;
                     env.define("return".to_string(), result);
                     dbg!("returned implicitly");
                     return Ok(());
                 }
                 Stmt::Return(expr) => {
-                    let expr = self.eval_expr(expr, env)?;
-                    self.decrease_block_level();
+                    let expr = self.eval_expr(expr, &env)?;
                     env.define("return".to_string(), expr);
                     dbg!("returned with return");
                     return Ok(());
                 }
                 stmt if is_last => {
-                    self.eval_stmt(stmt, env)?;
+                    self.eval_stmt(stmt, &env)?;
                     dbg!("returned unit");
-                    env.define("return".to_string(), Value::Unit);
+                    env.define("unit_return".to_string(), Value::Unit);
                     return Ok(());
                 }
-                _ => self.eval_stmt(stmt, env)?,
+                _ => self.eval_stmt(stmt, &env)?,
             }
         }
-        self.decrease_block_level();
         Ok(())
     }
 
     fn eval_while_stmt(&self, cond: Expr, body: Vec<Stmt>, env: &Environment) -> Result<()> {
         let mut condition = self.eval_expr(cond.clone(), env)?;
-
         while matches!(condition, Value::Bool(true)) {
             if env.get("return").is_some() {
+                dbg!("return from loop");
                 return Ok(());
             }
-            for stmt in body.iter() {
-                self.eval_stmt(stmt.clone(), env)?;
-            }
-            dbg!(condition);
-            condition = self.eval_expr(cond.clone(), env)?;
+            self.eval_block(body.clone(), &env)?;
+            condition = self.eval_expr(cond.clone(), &env)?;
         }
+        dbg!("became false");
 
         Ok(())
     }
