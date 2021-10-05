@@ -92,7 +92,6 @@ impl Interpreter {
         if !condition.is_bool() {
             return Err(BeemoError::RuntimeError(ErrorKind::NotBoolean));
         }
-        dbg!(&condition);
         match condition {
             Value::Bool(true) => self.eval_block(if_branch, env)?,
             Value::Bool(false) => {
@@ -329,8 +328,6 @@ impl Interpreter {
         self.increase_block_level();
         for (i, stmt) in stmts.into_iter().enumerate() {
             if env.get("return").is_some() {
-                dbg!(self.block_level());
-                dbg!(env.get("return"));
                 return Ok(())
             }
 

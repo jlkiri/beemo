@@ -2,9 +2,7 @@ binary_search(array, num):
 	0 -> lo
 	8 -> hi
 	while lo <= hi:
-		print "yo"
 		lo + (hi - lo) / 2 -> mid
-		print array[mid]
 		if array[mid] == num:
 			return mid
 		if array[mid] > num:
@@ -15,4 +13,5 @@ binary_search(array, num):
 
 main:
 	{1, 2, 3, 4, 5, 6, 7, 8, 9} -> array
+	print "The index is: "
 	print binary_search(array, 7)
