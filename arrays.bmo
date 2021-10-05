@@ -1,7 +1,8 @@
-greet(person):
-	print "Hello,"
-	print person
+log_number(num):
+	print num
 
 main:
-	"jlkiri" -> a
-	greet(a)
+	{1, 2, 3} -> a
+	1 -> m
+	0 -> n
+	log_number(a[-1])

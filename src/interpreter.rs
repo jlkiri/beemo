@@ -20,6 +20,8 @@ pub enum ErrorKind {
     VariableUndefined,
     ReturnNotExpression,
     NotCallable,
+    NotIndexable,
+    CannotBeIndexedBy,
     NoMain,
 }
 
@@ -233,9 +235,39 @@ impl Interpreter {
         Ok(evaluated)
     }
 
+    fn eval_index_access_expr(
+        &self,
+        target: String,
+        expr: Expr,
+        env: &Environment,
+    ) -> Result<Value> {
+        let array = env
+            .get(&target)
+            .ok_or(BeemoError::RuntimeError(ErrorKind::VariableUndefined))?;
+        match array {
+            Value::Array(vec) => {
+                let index = self.eval_expr(expr, env)?;
+                match index {
+                    Value::Number(num) => {
+                        if num >= 0f32 {
+                            let n = num as usize;
+                            Ok(Value::Number(vec[n]))
+                        } else {
+                            let n = (vec.len() as f32 + num) as usize;
+                            Ok(Value::Number(vec[n]))
+                        }
+                    }
+                    _ => Err(BeemoError::RuntimeError(ErrorKind::CannotBeIndexedBy)),
+                }
+            }
+            _ => Err(BeemoError::RuntimeError(ErrorKind::NotIndexable)),
+        }
+    }
+
     pub fn eval_expr(&self, expr: Expr, env: &Environment) -> Result<Value> {
         match expr {
             Expr::Variable(name) => self.eval_var_expr(name, env),
+            Expr::IndexAccess(target, expr) => self.eval_index_access_expr(target, *expr, env),
             Expr::Call(callee, args) => self.eval_call_expr(callee, args, env),
             Expr::Literal(value) => Ok(value),
             Expr::Assignment(lvalue, rvalue) => self.eval_assignment_expr(lvalue, *rvalue, env),

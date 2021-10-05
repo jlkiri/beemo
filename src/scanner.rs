@@ -2,31 +2,26 @@ use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::bytes::complete::take_till;
 use nom::bytes::complete::take_while;
-use nom::character::complete::alphanumeric1;
 use nom::character::complete::anychar;
 use nom::character::complete::char;
 use nom::character::complete::line_ending;
 use nom::character::complete::space0;
 use nom::character::complete::space1;
-use nom::character::complete::{alpha1, alphanumeric0, tab};
-use nom::character::is_alphanumeric;
+use nom::character::complete::{alpha1, tab};
 use nom::combinator::all_consuming;
 use nom::combinator::eof;
-use nom::combinator::iterator;
 use nom::combinator::not;
 use nom::combinator::{map, recognize, value};
-use nom::error::{ContextError, ErrorKind as NomErrorKind, ParseError};
+use nom::error::{ErrorKind as NomErrorKind, ParseError};
 use nom::multi::many0;
 use nom::multi::many_till;
 use nom::number::complete::float;
-use nom::sequence::delimited;
 use nom::sequence::{pair, preceded, terminated};
 use nom::Err::Failure;
 use nom::Finish;
 use nom::Offset;
 use nom::{self};
 
-use miette::Diagnostic;
 use thiserror::Error;
 
 use crate::error::BeemoError;
@@ -97,6 +92,10 @@ pub enum TokenType {
     Bang,
     OpeningParen,
     ClosingParen,
+    OpeningBracket,
+    ClosingBracket,
+    OpeningBrace,
+    ClosingBrace,
     Eof,
 }
 
@@ -185,9 +184,9 @@ fn number(input: &str) -> Result<TokenType> {
 }
 
 fn string(input: &str) -> Result<TokenType> {
-    let (lquote, token) = char('"')(input)?;
+    let (lquote, _) = char('"')(input)?;
     let (input, value) = take_till(|c| c == '"')(lquote)?;
-    let (input, token) =
+    let (input, _) =
         char::<_, NomScanError<&str>>('"')(input).or(Err(Failure(NomScanError::custom(
             0,
             lquote,
@@ -204,17 +203,21 @@ fn maybe_string(input: &str) -> Result<TokenType> {
 fn non_string(input: &str) -> Result<TokenType> {
     let (input, token) = alt((
         value(TokenType::Assign, tag("->")),
+        value(TokenType::EqualEqual, tag("==")),
+        value(TokenType::OpeningBracket, tag("[")),
+        value(TokenType::ClosingBracket, tag("]")),
+        value(TokenType::OpeningBrace, tag("{")),
+        value(TokenType::ClosingBrace, tag("}")),
+        value(TokenType::OpeningParen, tag("(")),
+        value(TokenType::ClosingParen, tag(")")),
         value(TokenType::Plus, tag("+")),
         value(TokenType::Multiply, tag("*")),
         value(TokenType::Minus, tag("-")),
         value(TokenType::Divide, tag("/")),
         value(TokenType::Colon, tag(":")),
         value(TokenType::Bang, tag("!")),
-        value(TokenType::OpeningParen, tag("(")),
         value(TokenType::Comma, tag(",")),
         value(TokenType::Modulo, tag("%")),
-        value(TokenType::EqualEqual, tag("==")),
-        value(TokenType::ClosingParen, tag(")")),
         value(TokenType::GreaterThan, tag(">")),
         value(TokenType::LessThan, tag("<")),
         keyword,
@@ -231,7 +234,7 @@ fn tokens(input: &str) -> Result<Vec<TokenType>> {
     Ok((input, tokens))
 }
 
-fn preceding_lines(input: &str) -> Result<(Vec<()>, &str)> {
+/* fn preceding_lines(input: &str) -> Result<(Vec<()>, &str)> {
     terminated(many_till(value((), anychar), line_ending), not(eof))(input)
 }
 
@@ -240,7 +243,7 @@ fn count_preceding_lines(input: &str) -> (&str, usize) {
     let count = iter.count();
     let (rest, _) = iter.finish().finish().expect("Should not fail.");
     (rest, count)
-}
+} */
 
 fn scan_lines(
     source: &str,

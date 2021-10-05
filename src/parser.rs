@@ -28,6 +28,7 @@ pub enum Stmt {
 pub enum Value {
     String(String),
     Number(f32),
+    Array(Vec<f32>),
     Callable(Function),
     Bool(bool),
     Unit,
@@ -36,6 +37,7 @@ pub enum Value {
 #[derive(Debug, Clone)]
 pub enum Expr {
     Literal(Value),
+    IndexAccess(String, Box<Expr>),
     Grouping(Box<Expr>),
     Assignment(String, Box<Expr>),
     Unary(TokenType, Box<Expr>),
@@ -49,12 +51,15 @@ pub enum Expr {
 pub enum ErrorKind {
     UnexpectedEof,
     UnexpectedToken,
+    InvalidIndexTarget,
     NotAssignable,
     ExpectedFunctionName,
     ExpectedArgument,
-    BadLiteral,
+    ExpectedNumber,
+    BadLiteral(Option<Token>),
     MissingClosingBracket,
     MissingClosingParen,
+    MissingClosingBrace,
     MissingClosingParenInCall(Token),
     Internal,
     ExpectedColon,
@@ -258,43 +263,60 @@ impl<'a> Parser<'a> {
             let expr = self.unary()?;
             return Ok(Expr::Unary(t.ty, Box::new(expr)));
         }
-        self.call()
+        self.call_like()
     }
 
     fn peek_token(&mut self) -> Option<Token> {
         self.tokens.peek().copied().cloned()
     }
 
-    fn call(&mut self) -> Result<Expr> {
+    fn call_like(&mut self) -> Result<Expr> {
         let lit = self.literal()?;
         if self.read_token_if(&TokenType::OpeningParen).is_some() {
-            let callee = match lit {
-                Expr::Variable(callee) => callee,
-                _ => Err(self.err(ErrorKind::UnexpectedToken))?,
-            };
-
-            let mut arguments = vec![];
-            if self.read_token_if(&TokenType::ClosingParen).is_some() {
-                return Ok(Expr::Call(callee, arguments));
-            }
-            while {
-                let arg = self
-                    .expression()
-                    .or(Err(self.err(ErrorKind::ExpectedArgument)))?;
-                arguments.push(arg);
-                self.read_token_if(&TokenType::Comma).is_some()
-            } {
-                // Do-while loop.
-            }
-            self.read_token_if(&TokenType::ClosingParen)
-                .ok_or_else(|| {
-                    let t = self.peek_token().expect("Unexpected eof.");
-                    self.err(ErrorKind::MissingClosingParenInCall(t))
-                })?;
-            Ok(Expr::Call(callee, arguments))
-        } else {
-            Ok(lit)
+            return self.call(lit);
         }
+        if self.read_token_if(&TokenType::OpeningBracket).is_some() {
+            return self.index_access(lit);
+        }
+        Ok(lit)
+    }
+
+    fn index_access(&mut self, lit: Expr) -> Result<Expr> {
+        let member = self.term()?;
+        self.read_token_if(&TokenType::ClosingBracket)
+            .ok_or(self.err(ErrorKind::MissingClosingBracket))?;
+        let target = match lit {
+            Expr::Variable(target) => target,
+            _ => Err(self.err(ErrorKind::InvalidIndexTarget))?,
+        };
+        Ok(Expr::IndexAccess(target, Box::new(member)))
+    }
+
+    fn call(&mut self, lit: Expr) -> Result<Expr> {
+        let callee = match lit {
+            Expr::Variable(callee) => callee,
+            _ => Err(self.err(ErrorKind::UnexpectedToken))?,
+        };
+
+        let mut arguments = vec![];
+        if self.read_token_if(&TokenType::ClosingParen).is_some() {
+            return Ok(Expr::Call(callee, arguments));
+        }
+        while {
+            let arg = self
+                .expression()
+                .or(Err(self.err(ErrorKind::ExpectedArgument)))?;
+            arguments.push(arg);
+            self.read_token_if(&TokenType::Comma).is_some()
+        } {
+            // Do-while loop.
+        }
+        self.read_token_if(&TokenType::ClosingParen)
+            .ok_or_else(|| {
+                let t = self.peek_token().expect("Unexpected eof.");
+                self.err(ErrorKind::MissingClosingParenInCall(t))
+            })?;
+        Ok(Expr::Call(callee, arguments))
     }
 
     fn literal(&mut self) -> Result<Expr> {
@@ -314,6 +336,10 @@ impl<'a> Parser<'a> {
             }
         }
 
+        if self.read_token_if(&TokenType::OpeningBrace).is_some() {
+            return self.array();
+        }
+
         if self.read_token_if(&TokenType::OpeningParen).is_some() {
             let group = self.expression()?;
             self.read_token_if(&TokenType::ClosingParen)
@@ -321,10 +347,32 @@ impl<'a> Parser<'a> {
             return Ok(Expr::Grouping(Box::new(group)));
         }
 
+        let p = self.peek_token();
+
         match self.read_token_if_ident() {
             Some(v) => Ok(Expr::Variable(v)),
-            None => Err(self.err(ErrorKind::BadLiteral)),
+            None => Err(self.err(ErrorKind::BadLiteral(p))),
         }
+    }
+
+    fn array(&mut self) -> Result<Expr> {
+        let mut members = vec![];
+        if self.read_token_if(&TokenType::ClosingBrace).is_some() {
+            return Ok(Expr::Literal(Value::Array(members)));
+        }
+        while {
+            let num = self.literal().map(|expr| match expr {
+                Expr::Literal(Value::Number(f)) => Ok(f),
+                _ => Err(self.err(ErrorKind::ExpectedArgument)),
+            })??;
+            members.push(num);
+            self.read_token_if(&TokenType::Comma).is_some()
+        } {
+            // Do-while loop.
+        }
+        self.read_token_if(&TokenType::ClosingBrace)
+            .ok_or(self.err(ErrorKind::MissingClosingBrace))?;
+        Ok(Expr::Literal(Value::Array(members)))
     }
 
     fn comparison(&mut self) -> Result<Expr> {
