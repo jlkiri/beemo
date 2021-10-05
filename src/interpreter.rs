@@ -1,3 +1,5 @@
+use core::panic;
+
 use crate::{
     env::Environment,
     error::*,
@@ -25,14 +27,34 @@ pub enum ErrorKind {
     NoMain,
 }
 
+struct BlockLevel {
+    level: usize
+}
+
+impl BlockLevel {
+    pub fn increase(&mut self) {
+        self.level += 1;
+    }
+
+    pub fn decrease(&mut self) {
+        self.level -= 1;
+    }
+}
+
+fn increase(bl: &mut BlockLevel) {
+    bl.increase()
+}
+
 pub struct Interpreter {
     pub globals: Environment,
+    block_level: BlockLevel,
 }
 
 impl Interpreter {
     pub fn new() -> Self {
         Self {
             globals: Environment::new(),
+            block_level: BlockLevel { level: 0 },
         }
     }
 
@@ -70,6 +92,7 @@ impl Interpreter {
         if !condition.is_bool() {
             return Err(BeemoError::RuntimeError(ErrorKind::NotBoolean));
         }
+        dbg!(&condition);
         match condition {
             Value::Bool(true) => self.eval_block(if_branch, env)?,
             Value::Bool(false) => {
@@ -108,7 +131,7 @@ impl Interpreter {
             .ok_or(BeemoError::RuntimeError(ErrorKind::VariableUndefined))?;
         match func {
             Value::Callable(f) => {
-                let ret = f.call(&self, arguments)?;
+                let ret = f.call(self, arguments)?;
                 Ok(ret)
             }
             _ => Err(BeemoError::RuntimeError(ErrorKind::NotCallable)),
@@ -278,38 +301,77 @@ impl Interpreter {
         }
     }
 
+    fn block_level(&self) -> f32 {
+        match self.globals.get("__block_level").unwrap_or(Value::Number(0f32)) {
+            Value::Number(n) => n,
+            _ => panic!("wtf why is block level not a number.")
+        }
+    }
+
+    fn increase_block_level(&self) {
+        let blvl = match self.globals.get("__block_level").unwrap_or(Value::Number(0f32)) {
+            Value::Number(n) => n,
+            _ => panic!("wtf why is block level not a number.")
+        };
+        self.globals.define("__block_level".to_string(), Value::Number(blvl + 1.0));
+    }
+
+    fn decrease_block_level(&self) {
+        let blvl = match self.globals.get("__block_level").unwrap_or(Value::Number(0f32)) {
+            Value::Number(n) => n,
+            _ => panic!("wtf why is block level not a number.")
+        };
+        self.globals.define("__block_level".to_string(), Value::Number(blvl - 1.0));
+    }
+
     pub fn eval_block(&self, stmts: Vec<Stmt>, env: &Environment) -> Result<()> {
         let length = stmts.len();
+        self.increase_block_level();
         for (i, stmt) in stmts.into_iter().enumerate() {
-            if i == length - 1 {
-                match stmt {
-                    Stmt::Expression(expr) => {
-                        let result = self.eval_expr(expr, env)?;
-                        env.define("return".to_string(), result);
-                        return Ok(());
-                    }
-                    _ => {
-                        self.eval_stmt(stmt, env)?;
-                        env.define("return".to_string(), Value::Unit);
-                        return Ok(());
-                    }
-                }
+            if env.get("return").is_some() {
+                dbg!(self.block_level());
+                dbg!(env.get("return"));
+                return Ok(())
             }
-            self.eval_stmt(stmt, env)?;
+
+            let is_last = i == length - 1 && self.block_level() == 1.0;
+
+            match stmt {
+                Stmt::Expression(expr) if is_last => {
+                    let result = self.eval_expr(expr, env)?;
+                    env.define("return".to_string(), result);
+                    return Ok(());
+                },
+                Stmt::Return(expr) =>  {
+                    let expr = self.eval_expr(expr, env)?;
+                    env.define("return".to_string(), expr);
+                    return Ok(())
+                },
+                stmt if is_last => {
+                    self.eval_stmt(stmt, env)?;
+                    env.define("return".to_string(), Value::Unit);
+                    return Ok(());
+                },
+                _ => self.eval_stmt(stmt, env)?
+            }
         }
+        self.decrease_block_level();
         Ok(())
     }
 
     fn eval_while_stmt(&self, cond: Expr, body: Vec<Stmt>, env: &Environment) -> Result<()> {
-        dbg!(&cond);
         let mut condition = self.eval_expr(cond.clone(), env)?;
 
         while matches!(condition, Value::Bool(true)) {
+            if env.get("return").is_some() {
+                return Ok(())
+            }
             for stmt in body.iter() {
                 self.eval_stmt(stmt.clone(), env)?;
             }
             condition = self.eval_expr(cond.clone(), env)?;
         }
+
         Ok(())
     }
 

@@ -42,12 +42,11 @@ impl Environment {
     }
 
     pub fn define(&self, ident: String, value: Value) {
-        //dbg!(&ident, &value);
         let inner = &self
             .0
             .as_ref()
             .ok_or(BeemoError::InternalError)
-            .expect("Unwrapped empty environment")
+            .expect("Unwrapped empty environment (define)")
             .inner;
         inner.borrow_mut().insert(ident, value);
     }
@@ -65,11 +64,11 @@ impl Environment {
     pub fn get(&self, ident: &str) -> Option<Value> {
         let mut env = self.clone();
         while {
-            let node = env
-                .node()
-                .ok_or(BeemoError::InternalError)
-                .expect("Unwrapped empty environment");
-            node.inner.borrow().get(ident).is_none()
+            let node = env.node();
+            node.is_some() && 
+                node.and_then(|node| {
+                    node.inner.borrow().get(ident).cloned()
+                }).is_none()
         } {
             env = env.parent();
         }

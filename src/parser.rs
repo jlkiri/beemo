@@ -459,12 +459,18 @@ impl<'a> Parser<'a> {
         Ok(Stmt::While(condition, block))
     }
 
+    fn return_statement(&mut self) -> Result<Stmt> {
+        let expr = self.expression()?;
+        Ok(Stmt::Return(expr))
+    }
+
     fn statement(&mut self) -> Result<Stmt> {
         match self.read_token_if_keyword() {
             Some(kw) => match kw.as_str() {
                 "print" => Ok(Stmt::Print(self.expression()?)),
                 "if" => self.if_statement(),
                 "while" => self.while_statement(),
+                "return" => self.return_statement(),
                 _ => todo!(),
             },
             None => Ok(Stmt::Expression(self.expression()?)),

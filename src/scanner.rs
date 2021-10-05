@@ -200,10 +200,18 @@ fn maybe_string(input: &str) -> Result<TokenType> {
     alt((string, non_string))(input)
 }
 
-fn non_string(input: &str) -> Result<TokenType> {
-    let (input, token) = alt((
+fn combined_token(input: &str) -> Result<TokenType> {
+    alt((
         value(TokenType::Assign, tag("->")),
         value(TokenType::EqualEqual, tag("==")),
+        value(TokenType::GreaterEqual, tag(">=")),
+        value(TokenType::LessEqual, tag("<=")),
+    ))(input)
+}
+
+fn non_string(input: &str) -> Result<TokenType> {
+    let (input, token) = alt((
+        combined_token,
         value(TokenType::OpeningBracket, tag("[")),
         value(TokenType::ClosingBracket, tag("]")),
         value(TokenType::OpeningBrace, tag("{")),

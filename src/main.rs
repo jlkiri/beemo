@@ -20,11 +20,10 @@ fn main() -> Result<()> {
     });
     let source = fs::read_to_string(file).expect("Failed reading file.");
     let tokens = scan(&source)?;
-    dbg!(&tokens);
     let mut parser = Parser::new(tokens.iter().peekable());
 
     let res = parser.parse().expect("aaaaaa");
-    let interpreter = Interpreter::new();
-    interpreter.interpret(res)?;
+    let mut interpreter = Interpreter::new();
+    interpreter.interpret(res).expect("derp");
     Ok(())
 }

@@ -13,14 +13,14 @@ pub struct Function {
 
 impl Function {
     pub fn call(&self, interpreter: &Interpreter, arguments: Vec<Value>) -> Result<Value> {
-        let env = interpreter.globals.child();
+        let mut env = interpreter.globals.child();
         for (i, arg) in arguments.into_iter().enumerate() {
             let param = self.params.get(i).ok_or(BeemoError::RuntimeError(
                 interpreter::ErrorKind::ParameterArgumentMismatch,
             ))?;
             env.define(param.to_string(), arg)
         }
-        interpreter.eval_block(self.body.clone(), &env)?;
+        interpreter.eval_block(self.body.clone(), &mut env)?;
         env.get("return").ok_or(BeemoError::RuntimeError(
             interpreter::ErrorKind::NothingReturned,
         ))
