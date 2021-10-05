@@ -345,24 +345,20 @@ impl Interpreter {
                 Stmt::Expression(e @ Expr::Variable(_)) if is_last => {
                     let result = self.eval_expr(e, &env)?;
                     env.define("return".to_string(), result);
-                    dbg!("returned implicitly");
                     return Ok(());
                 }
                 Stmt::Expression(e @ Expr::Literal(_)) if is_last => {
                     let result = self.eval_expr(e, &env)?;
                     env.define("return".to_string(), result);
-                    dbg!("returned implicitly");
                     return Ok(());
                 }
                 Stmt::Return(expr) => {
                     let expr = self.eval_expr(expr, &env)?;
                     env.define("return".to_string(), expr);
-                    dbg!("returned with return");
                     return Ok(());
                 }
                 stmt if is_last => {
                     self.eval_stmt(stmt, &env)?;
-                    dbg!("returned unit");
                     env.define("unit_return".to_string(), Value::Unit);
                     return Ok(());
                 }
@@ -376,14 +372,11 @@ impl Interpreter {
         let mut condition = self.eval_expr(cond.clone(), env)?;
         while matches!(condition, Value::Bool(true)) {
             if env.get("return").is_some() {
-                dbg!("return from loop");
                 return Ok(());
             }
             self.eval_block(body.clone(), &env)?;
             condition = self.eval_expr(cond.clone(), &env)?;
         }
-        dbg!("became false");
-
         Ok(())
     }
 
