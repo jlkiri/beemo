@@ -302,9 +302,16 @@ impl Interpreter {
         }
     }
 
+    fn eval_push_expr(&self, array: String, num: Value, env: &Environment) -> Result<Value> {
+        let array = env
+            .get(&array)
+            .ok_or(BeemoError::RuntimeError(ErrorKind::VariableUndefined))?;
+    }
+
     pub fn eval_expr(&self, expr: Expr, env: &Environment) -> Result<Value> {
         match expr {
             Expr::Variable(name) => self.eval_var_expr(name, env),
+            Expr::Push(array, num) => self.eval_push_expr(array, num, env),
             Expr::IndexAccess(target, expr) => self.eval_index_access_expr(target, *expr, env),
             Expr::Call(callee, args) => self.eval_call_expr(callee, args, env),
             Expr::Literal(value) => Ok(value),

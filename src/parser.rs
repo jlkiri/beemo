@@ -6,8 +6,6 @@ use crate::function::{Callable, Function};
 use crate::scanner::TokenType;
 use crate::{error::*, scanner::Token};
 
-use thiserror::Error;
-
 pub struct Parser<'a> {
     tokens: Peekable<Iter<'a, Token>>,
 }
@@ -39,6 +37,7 @@ pub enum Value {
 #[derive(Debug, Clone)]
 pub enum Expr {
     Literal(Value),
+    Push(String, Value),
     IndexAccess(String, Box<Expr>),
     Grouping(Box<Expr>),
     Assignment(String, Box<Expr>),
@@ -68,6 +67,7 @@ pub enum ErrorKind {
     ExpectedIndent,
     ExpectedDedent,
     BadCall,
+    BadPush,
 }
 
 impl Value {
@@ -130,7 +130,7 @@ impl<'a> Parser<'a> {
                 Token { ty } => {
                     Some(ty.string_value().unwrap().to_string()) // Safe unwrap.
                 }
-                _ => None,
+                _ => unreachable!(),
             })
     }
 
@@ -139,7 +139,7 @@ impl<'a> Parser<'a> {
             .next_if(|t| matches!(t.ty, TokenType::String(_)))
             .and_then(|t| match t {
                 Token { ty } => Some(ty.string_value().unwrap().to_string()), // Safe unwrap.
-                _ => None,
+                _ => unreachable!(),
             })
     }
 
@@ -148,7 +148,7 @@ impl<'a> Parser<'a> {
             .next_if(|t| matches!(t.ty, TokenType::Keyword(_)))
             .and_then(|t| match t {
                 Token { ty } => Some(ty.string_value().unwrap().to_string()), // Safe unwrap.
-                _ => None,
+                _ => unreachable!(),
             })
     }
 
@@ -323,6 +323,12 @@ impl<'a> Parser<'a> {
 
     fn literal(&mut self) -> Result<Expr> {
         if let Some(v) = self.read_token_if_float() {
+            if self.read_token_if(&TokenType::Push).is_some() {
+                let array = self
+                    .read_token_if_ident()
+                    .ok_or(self.err(ErrorKind::BadPush))?;
+                return Ok(Expr::Push(array, Value::Number(v)));
+            }
             return Ok(Expr::Literal(Value::Number(v)));
         }
 
@@ -473,6 +479,7 @@ impl<'a> Parser<'a> {
                 "if" => self.if_statement(),
                 "while" => self.while_statement(),
                 "return" => self.return_statement(),
+
                 _ => todo!(),
             },
             None => Ok(Stmt::Expression(self.expression()?)),

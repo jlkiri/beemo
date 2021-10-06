@@ -3,23 +3,10 @@ declaration := func
 
 func := identifier ('(' params? ')')? ':' block
 
-statement := return | print | condition | for | while
+statement := return | print | condition | for | while | push
 return := 'return' expr
 print := 'print' expr
 condition := 'if' expr ':' block ('else' ':' block)?
-
-1 -> array#m + n#
-1 -> array{m + n}
-1 -> array@m + n@
-1 -> array[m + n]
-1 -> [m + n]array
-1 -> [0]array
-1 -> array.m + n.
-1 -> array.0.
-1 -> array|m + n|
-1 -> array/m + n/
-1 -> m + n @ array
-1 -> 2 @ array
 
 expr := assignment
 assignment := logical ('->' identifier)?
@@ -31,7 +18,7 @@ factor := unary (('*' | '/') unary)*
 unary := ('!' | '-') unary | call-like
 call-like := primary '[' term ']' | call
 call := primary ('(' arguments? ')')*
-primary := identifier | 'true' | 'false' | number | array | '(' expr ')'
+primary := identifier | 'true' | 'false' | number ('>>' identifier) | array | '(' expr ')'
 ```
 
 ```

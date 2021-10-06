@@ -49,7 +49,7 @@ impl<I> ParseError<I> for NomScanError<I> {
         }
     }
 
-    fn append(input: I, kind: NomErrorKind, mut other: Self) -> Self {
+    fn append(_input: I, _kind: NomErrorKind, other: Self) -> Self {
         // other.errors.push((input, ErrorKind::Nom(kind)));
         other
     }
@@ -74,6 +74,7 @@ pub enum TokenType {
     Keyword(String),
     String(String),
     Float(f32),
+    Push,
     Colon,
     Plus,
     Multiply,
@@ -200,18 +201,19 @@ fn maybe_string(input: &str) -> Result<TokenType> {
     alt((string, non_string))(input)
 }
 
-fn combined_token(input: &str) -> Result<TokenType> {
+fn complex_symbol(input: &str) -> Result<TokenType> {
     alt((
         value(TokenType::Assign, tag("->")),
         value(TokenType::EqualEqual, tag("==")),
         value(TokenType::GreaterEqual, tag(">=")),
         value(TokenType::LessEqual, tag("<=")),
+        value(TokenType::Push, tag(">>")),
     ))(input)
 }
 
 fn non_string(input: &str) -> Result<TokenType> {
     let (input, token) = alt((
-        combined_token,
+        complex_symbol,
         value(TokenType::OpeningBracket, tag("[")),
         value(TokenType::ClosingBracket, tag("]")),
         value(TokenType::OpeningBrace, tag("{")),
