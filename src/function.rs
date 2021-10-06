@@ -1,3 +1,6 @@
+use dyn_clone::DynClone;
+use std::fmt::Debug;
+
 use crate::error::*;
 use crate::interpreter;
 use crate::parser::Stmt;
@@ -11,8 +14,14 @@ pub struct Function {
     pub body: Vec<Stmt>,
 }
 
-impl Function {
-    pub fn call(&self, interpreter: &Interpreter, arguments: Vec<Value>) -> Result<Value> {
+pub trait Callable: Debug + DynClone {
+    fn call(&self, interpreter: &Interpreter, arguments: Vec<Value>) -> Result<Value>;
+}
+
+dyn_clone::clone_trait_object!(Callable);
+
+impl Callable for Function {
+    fn call(&self, interpreter: &Interpreter, arguments: Vec<Value>) -> Result<Value> {
         let mut env = interpreter.globals.child();
         for (i, arg) in arguments.into_iter().enumerate() {
             let param = self.params.get(i).ok_or(BeemoError::RuntimeError(

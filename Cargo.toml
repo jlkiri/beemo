@@ -9,3 +9,4 @@ edition = "2018"
 miette = { version = "3.0.0", features = ["fancy"] }
 nom = "7.0.0"
 thiserror = "1.0.29"
+dyn-clone = "1.0.4"

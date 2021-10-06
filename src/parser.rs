@@ -1,7 +1,8 @@
 use std::iter::Peekable;
 use std::slice::Iter;
+use std::time::Instant;
 
-use crate::function::Function;
+use crate::function::{Callable, Function};
 use crate::scanner::TokenType;
 use crate::{error::*, scanner::Token};
 
@@ -29,7 +30,8 @@ pub enum Value {
     String(String),
     Number(f32),
     Array(Vec<f32>),
-    Callable(Function),
+    Callable(Box<dyn Callable>),
+    Instant(Instant),
     Bool(bool),
     Unit,
 }

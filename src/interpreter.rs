@@ -1,9 +1,11 @@
 use core::panic;
+use dyn_clone::DynClone;
+use std::time::{Duration, Instant};
 
 use crate::{
     env::Environment,
     error::*,
-    function::Function,
+    function::*,
     parser::Stmt,
     parser::{Expr, Value},
     scanner::TokenType,
@@ -27,35 +29,48 @@ pub enum ErrorKind {
     NoMain,
 }
 
-struct BlockLevel {
-    level: usize,
-}
-
-impl BlockLevel {
-    pub fn increase(&mut self) {
-        self.level += 1;
-    }
-
-    pub fn decrease(&mut self) {
-        self.level -= 1;
-    }
-}
-
-fn increase(bl: &mut BlockLevel) {
-    bl.increase()
-}
-
 pub struct Interpreter {
     pub globals: Environment,
-    block_level: BlockLevel,
+}
+
+#[derive(Debug, Clone)]
+struct time_start;
+impl Callable for time_start {
+    fn call(&self, interpreter: &Interpreter, arguments: Vec<Value>) -> Result<Value> {
+        interpreter
+            .globals
+            .define("__timestart".to_string(), Value::Instant(Instant::now()));
+        Ok(Value::Unit)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct time_end;
+impl Callable for time_end {
+    fn call(&self, interpreter: &Interpreter, _arguments: Vec<Value>) -> Result<Value> {
+        let start = interpreter
+            .globals
+            .get("__timestart")
+            .expect("Didn't start a timer.");
+        match start {
+            Value::Instant(inst) => {
+                println!("{:?}ms", (Instant::now() - inst).as_micros());
+            }
+            _ => unreachable!(),
+        }
+        Ok(Value::Unit)
+    }
 }
 
 impl Interpreter {
     pub fn new() -> Self {
-        Self {
-            globals: Environment::new(),
-            block_level: BlockLevel { level: 0 },
-        }
+        let globals = Environment::new();
+        globals.define(
+            "time_start".to_string(),
+            Value::Callable(Box::new(time_start)),
+        );
+        globals.define("time_end".to_string(), Value::Callable(Box::new(time_end)));
+        Self { globals }
     }
 
     pub fn interpret(&self, stmts: Vec<Stmt>) -> Result<()> {
@@ -77,7 +92,7 @@ impl Interpreter {
 
     pub fn eval_print_stmt(&self, val: Expr, env: &Environment) -> Result<()> {
         let expr = self.eval_expr(val, env)?;
-        println!("PRINT STATEMENT: {:?}", expr);
+        println!("{:?}", expr);
         Ok(())
     }
 
@@ -105,7 +120,8 @@ impl Interpreter {
     }
 
     pub fn eval_function_decl(&self, fun: Function) -> Result<()> {
-        self.globals.define(fun.name.clone(), Value::Callable(fun));
+        self.globals
+            .define(fun.name.clone(), Value::Callable(Box::new(fun)));
         Ok(())
     }
 
@@ -298,43 +314,6 @@ impl Interpreter {
             Expr::Binary(op, lhs, rhs) => self.eval_binary_expr(op, *lhs, *rhs, env),
             Expr::Logical(op, lhs, rhs) => self.eval_logical_expr(op, *lhs, *rhs, env),
         }
-    }
-
-    fn block_level(&self) -> f32 {
-        match self
-            .globals
-            .get("__block_level")
-            .unwrap_or(Value::Number(0f32))
-        {
-            Value::Number(n) => n,
-            _ => panic!("wtf why is block level not a number."),
-        }
-    }
-
-    fn increase_block_level(&self) {
-        let blvl = match self
-            .globals
-            .get("__block_level")
-            .unwrap_or(Value::Number(0f32))
-        {
-            Value::Number(n) => n,
-            _ => panic!("wtf why is block level not a number."),
-        };
-        self.globals
-            .define("__block_level".to_string(), Value::Number(blvl + 1.0));
-    }
-
-    fn decrease_block_level(&self) {
-        let blvl = match self
-            .globals
-            .get("__block_level")
-            .unwrap_or(Value::Number(0f32))
-        {
-            Value::Number(n) => n,
-            _ => panic!("wtf why is block level not a number."),
-        };
-        self.globals
-            .define("__block_level".to_string(), Value::Number(blvl - 1.0));
     }
 
     pub fn eval_block(&self, stmts: Vec<Stmt>, env: &Environment) -> Result<()> {
