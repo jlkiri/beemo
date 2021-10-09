@@ -16,11 +16,11 @@ def binary_search(array, num):
 def main():
 	counter = 0
 	array = []
-	while counter < 1000000:
+	while counter < 100000:
 		array.append(counter)
 		counter += 1
 	start_time = time.perf_counter()
-	print(binary_search(array, 324109))
+	print(binary_search(array, 32410))
 	print("--- %s ms ---" % ((time.perf_counter() - start_time) * 1000))
 
 main()

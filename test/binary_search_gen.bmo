@@ -11,11 +11,13 @@ binary_search(array, num):
 			mid + 1 -> lo
 
 main:
+	time_start()
 	0 -> counter
 	{} -> array
 	while counter < 100000:
 		counter >> array
 		counter + 1 -> counter
+	time_end()
 	time_start()
 	print binary_search(array, 32410)
 	time_end()

@@ -19,10 +19,12 @@ function binarySearch(arr, num) {
 let arr = [];
 let counter = 0;
 
+console.time();
 while (counter < 100000) {
   arr.push(counter);
   counter += 1;
 }
+console.timeEnd();
 
 console.time();
 console.log(binarySearch(arr, 32410));

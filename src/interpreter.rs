@@ -54,7 +54,7 @@ impl Callable for time_end {
             .expect("Didn't start a timer.");
         match start {
             Value::Instant(inst) => {
-                println!("{:?}ms", (Instant::now() - inst).as_micros());
+                println!("{:?}ms", (Instant::now() - inst).as_millis());
             }
             _ => unreachable!(),
         }
