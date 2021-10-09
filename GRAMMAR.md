@@ -29,7 +29,3 @@ array := '{' members? '}'
 members := number (',' number)*
 indent := '\t'
 ```
-
-```
-5.times(|| vec.push(thing))
-```
