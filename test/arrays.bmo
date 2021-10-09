@@ -3,6 +3,6 @@ log_number(num):
 
 main:
 	{1, 2, 3} -> a
-	1 -> m
-	0 -> n
-	log_number(a[-1])
+	4 >> a
+	5 >> a
+	log_number(a[-2])

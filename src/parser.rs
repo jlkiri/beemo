@@ -37,7 +37,7 @@ pub enum Value {
 #[derive(Debug, Clone)]
 pub enum Expr {
     Literal(Value),
-    Push(String, Value),
+    Push(String, Box<Expr>),
     IndexAccess(String, Box<Expr>),
     Grouping(Box<Expr>),
     Assignment(String, Box<Expr>),
@@ -327,7 +327,7 @@ impl<'a> Parser<'a> {
                 let array = self
                     .read_token_if_ident()
                     .ok_or(self.err(ErrorKind::BadPush))?;
-                return Ok(Expr::Push(array, Value::Number(v)));
+                return Ok(Expr::Push(array, Box::new(Expr::Literal(Value::Number(v)))));
             }
             return Ok(Expr::Literal(Value::Number(v)));
         }
@@ -358,7 +358,15 @@ impl<'a> Parser<'a> {
         let p = self.peek_token();
 
         match self.read_token_if_ident() {
-            Some(v) => Ok(Expr::Variable(v)),
+            Some(v) => {
+                if self.read_token_if(&TokenType::Push).is_some() {
+                    let array = self
+                        .read_token_if_ident()
+                        .ok_or(self.err(ErrorKind::BadPush))?;
+                    return Ok(Expr::Push(array, Box::new(Expr::Variable(v))));
+                }
+                Ok(Expr::Variable(v))
+            }
             None => Err(self.err(ErrorKind::BadLiteral(p))),
         }
     }

@@ -1,0 +1,22 @@
+binary_search(array, num):
+	0 -> lo
+	99999 -> hi
+	while lo <= hi:
+		lo + (hi - lo) / 2 -> mid
+		if array[mid] == num:
+			return mid
+		if array[mid] > num:
+			mid -> hi
+		if array[mid] < num:
+			mid + 1 -> lo
+
+main:
+	0 -> counter
+	{} -> array
+	while counter < 100000:
+		counter >> array
+		counter + 1 -> counter
+	time_start()
+	print binary_search(array, 32410)
+	time_end()
+	

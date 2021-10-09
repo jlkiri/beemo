@@ -9,20 +9,20 @@ use crate::{error::BeemoError, Value};
 } */
 
 #[derive(Debug, Clone)]
-pub struct Environment(Option<Rc<Node>>);
+pub struct Environment<'a>(Option<Rc<Node<'a>>>);
 
 #[derive(Debug, Clone)]
-struct Node {
+struct Node<'a> {
     inner: RefCell<HashMap<String, Value>>,
-    parent: Environment,
+    parent: &'a Environment<'a>,
     len: usize,
 }
 
-impl Environment {
+impl<'a> Environment<'a> {
     pub fn new() -> Self {
         let node = Node {
             inner: RefCell::new(HashMap::new()),
-            parent: Environment(None),
+            parent: &Environment(None),
             len: 0,
         };
         Self(Some(Rc::new(node)))
@@ -31,7 +31,7 @@ impl Environment {
     pub fn child(&self) -> Environment {
         let node = Node {
             inner: RefCell::new(HashMap::new()),
-            parent: self.clone(),
+            parent: self,
             len: self.len() + 1,
         };
         Environment(Some(Rc::new(node)))
@@ -55,14 +55,39 @@ impl Environment {
         self.0.as_ref()
     }
 
-    fn parent(&self) -> Environment {
-        self.0
-            .as_ref()
-            .map_or(Environment(None), |n| n.parent.clone())
+    fn parent(&self) -> &Environment {
+        self.0.as_ref().map_or(&Environment(None), |n| n.parent)
+    }
+
+    pub fn vec_push(&self, ident: &str, val: Value) -> Option<()> {
+        let mut env = self;
+        while {
+            let node = env.node();
+            node.is_some()
+                && node
+                    .and_then(|node| node.inner.borrow_mut().get_mut(ident).cloned())
+                    .is_none()
+        } {
+            env = env.parent();
+        }
+
+        let mut mut_env = env.node().and_then(|n| Some(n.inner.borrow_mut())).unwrap();
+        mut_env.get_mut(ident).and_then(|vec| {
+            if let Value::Array(vec) = vec {
+                match val {
+                    Value::Number(num) => {
+                        vec.push(num);
+                        return Some(());
+                    }
+                    _ => unreachable!(),
+                }
+            }
+            None
+        })
     }
 
     pub fn get(&self, ident: &str) -> Option<Value> {
-        let mut env = self.clone();
+        let mut env = self;
         while {
             let node = env.node();
             node.is_some()

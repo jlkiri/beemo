@@ -29,8 +29,8 @@ pub enum ErrorKind {
     NoMain,
 }
 
-pub struct Interpreter {
-    pub globals: Environment,
+pub struct Interpreter<'a> {
+    pub globals: Environment<'a>,
 }
 
 #[derive(Debug, Clone)]
@@ -62,7 +62,7 @@ impl Callable for time_end {
     }
 }
 
-impl Interpreter {
+impl Interpreter<'_> {
     pub fn new() -> Self {
         let globals = Environment::new();
         globals.define(
@@ -302,16 +302,23 @@ impl Interpreter {
         }
     }
 
-    fn eval_push_expr(&self, array: String, num: Value, env: &Environment) -> Result<Value> {
-        let array = env
-            .get(&array)
+    fn eval_push_expr(&self, array: String, expr: Expr, env: &Environment) -> Result<Value> {
+        let val = self.eval_expr(expr, env)?;
+        env.vec_push(&array, val.clone())
             .ok_or(BeemoError::RuntimeError(ErrorKind::VariableUndefined))?;
+        Ok(val)
+    }
+
+    fn eval_push_var_expr(&self, array: String, var: Value, env: &Environment) -> Result<Value> {
+        env.vec_push(&array, var.clone())
+            .ok_or(BeemoError::RuntimeError(ErrorKind::VariableUndefined))?;
+        Ok(var)
     }
 
     pub fn eval_expr(&self, expr: Expr, env: &Environment) -> Result<Value> {
         match expr {
             Expr::Variable(name) => self.eval_var_expr(name, env),
-            Expr::Push(array, num) => self.eval_push_expr(array, num, env),
+            Expr::Push(array, expr) => self.eval_push_expr(array, *expr, env),
             Expr::IndexAccess(target, expr) => self.eval_index_access_expr(target, *expr, env),
             Expr::Call(callee, args) => self.eval_call_expr(callee, args, env),
             Expr::Literal(value) => Ok(value),

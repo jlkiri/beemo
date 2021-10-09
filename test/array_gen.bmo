@@ -1,0 +1,10 @@
+log_number(num):
+	print num
+
+main:
+	0 -> n
+	{} -> arr
+	while n < 1000:
+		n >> arr
+		n + 1 -> n
+	print arr
