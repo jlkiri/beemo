@@ -1,19 +1,24 @@
-use miette::{self, Diagnostic, SourceSpan};
+use miette::{self, Diagnostic};
 use thiserror::Error;
 
-use crate::interpreter;
-use crate::parser;
+use crate::{interpreter, parser::ErrorKind};
 
 pub type Result<T> = std::result::Result<T, BeemoError>;
-type TokenLength = usize;
-type Span = (usize, TokenLength);
+type Length = usize;
+type Span = (usize, Length);
 type Help = String;
 type Description = String;
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum BeemoError {
-    #[error("Parser")]
-    ParseError(parser::ErrorKind),
+    #[error("Parser error: {2}.")]
+    #[diagnostic(code(beemo::parser), help("{3}"))]
+    ParserError(
+        #[source_code] String,
+        #[label = "Here."] Span,
+        Description,
+        Help,
+    ),
     #[error("Scan error: {2}.")]
     #[diagnostic(code(beemo::scanner), help("{3}"))]
     ScanError(

@@ -1,6 +1,5 @@
 use core::panic;
-use dyn_clone::DynClone;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use crate::{
     env::Environment,
@@ -34,8 +33,8 @@ pub struct Interpreter<'a> {
 }
 
 #[derive(Debug, Clone)]
-struct time_start;
-impl Callable for time_start {
+struct TimeStart;
+impl Callable for TimeStart {
     fn call(&self, interpreter: &Interpreter, arguments: Vec<Value>) -> Result<Value> {
         interpreter
             .globals
@@ -45,8 +44,8 @@ impl Callable for time_start {
 }
 
 #[derive(Debug, Clone)]
-struct time_end;
-impl Callable for time_end {
+struct TimeEnd;
+impl Callable for TimeEnd {
     fn call(&self, interpreter: &Interpreter, _arguments: Vec<Value>) -> Result<Value> {
         let start = interpreter
             .globals
@@ -67,9 +66,9 @@ impl Interpreter<'_> {
         let globals = Environment::new();
         globals.define(
             "time_start".to_string(),
-            Value::Callable(Box::new(time_start)),
+            Value::Callable(Box::new(TimeStart)),
         );
-        globals.define("time_end".to_string(), Value::Callable(Box::new(time_end)));
+        globals.define("time_end".to_string(), Value::Callable(Box::new(TimeEnd)));
         Self { globals }
     }
 

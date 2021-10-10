@@ -1,12 +1,6 @@
-use std::{borrow::BorrowMut, cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{error::BeemoError, Value};
-
-/* pub struct Environment {
-    enclosing: Option<Rc<Environment>>,
-    // parent: Option<&'a Environment<'a>>,
-    inner: HashMap<String, Value>,
-} */
 
 #[derive(Debug, Clone)]
 pub struct Environment<'a>(Option<Rc<Node<'a>>>);

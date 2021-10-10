@@ -5,13 +5,19 @@ use std::time::Instant;
 use crate::function::{Callable, Function};
 use crate::scanner::TokenType;
 use crate::{error::*, scanner::Token};
+use miette::Diagnostic;
+use thiserror::Error;
 
 pub struct Parser<'a> {
+    source: &'a str,
     tokens: Peekable<Iter<'a, Token>>,
 }
 
 type IfBranch = Vec<Stmt>;
 type ElseBranch = Vec<Stmt>;
+type Description = String;
+type Help = String;
+type Span = (usize, usize);
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
@@ -48,26 +54,37 @@ pub enum Expr {
     Call(String, Vec<Expr>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error, Diagnostic)]
+#[error("Errorkind")]
 pub enum ErrorKind {
     UnexpectedEof,
     UnexpectedToken,
     InvalidIndexTarget,
     NotAssignable,
+    #[error("fn name")]
+    #[diagnostic(help("poop"))]
     ExpectedFunctionName,
     ExpectedArgument,
     ExpectedNumber,
-    BadLiteral(Option<Token>),
+    BadLiteral,
     MissingClosingBracket,
     MissingClosingParen,
     MissingClosingBrace,
-    MissingClosingParenInCall(Token),
+    MissingClosingParenInCall,
     Internal,
     ExpectedColon,
     ExpectedIndent,
     ExpectedDedent,
     BadCall,
     BadPush,
+}
+
+impl ErrorKind {
+    fn span(&self) -> Span {
+        match self {
+            _ => todo!(),
+        }
+    }
 }
 
 impl Value {
@@ -80,8 +97,8 @@ impl Value {
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(tokens: Peekable<Iter<'a, Token>>) -> Self {
-        Self { tokens }
+    pub fn new(source: &'a str, tokens: Peekable<Iter<'a, Token>>) -> Self {
+        Self { source, tokens }
     }
 
     fn check(&mut self, ty: &TokenType) -> bool {
@@ -185,8 +202,14 @@ impl<'a> Parser<'a> {
         self.check(&TokenType::Eof) || self.check(&TokenType::Dedent)
     }
 
-    fn err(&self, kind: ErrorKind) -> BeemoError {
-        BeemoError::ParseError(kind)
+    fn err(&mut self, kind: ErrorKind) -> BeemoError {
+        let token = self.peek_token().unwrap();
+        BeemoError::ParserError(
+            self.source.to_string(),
+            token.span,
+            kind.to_string(),
+            kind.help().unwrap().to_string(),
+        )
     }
 
     fn block(&mut self) -> Result<Vec<Stmt>> {
@@ -316,12 +339,13 @@ impl<'a> Parser<'a> {
         self.read_token_if(&TokenType::ClosingParen)
             .ok_or_else(|| {
                 let t = self.peek_token().expect("Unexpected eof.");
-                self.err(ErrorKind::MissingClosingParenInCall(t))
+                self.err(ErrorKind::MissingClosingParenInCall)
             })?;
         Ok(Expr::Call(callee, arguments))
     }
 
     fn literal(&mut self) -> Result<Expr> {
+        // TODO: Make push (>>) parsing cleaner.
         if let Some(v) = self.read_token_if_float() {
             if self.read_token_if(&TokenType::Push).is_some() {
                 let array = self
@@ -367,7 +391,7 @@ impl<'a> Parser<'a> {
                 }
                 Ok(Expr::Variable(v))
             }
-            None => Err(self.err(ErrorKind::BadLiteral(p))),
+            None => Err(self.err(ErrorKind::BadLiteral)),
         }
     }
 
@@ -510,12 +534,4 @@ impl<'a> Parser<'a> {
         }
         Ok(decls)
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_fn() {}
 }

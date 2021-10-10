@@ -11,7 +11,7 @@ binary_search(array, num):
 			mid + 1 -> lo
 
 main:
-	3time_start()
+	time_start()
 	{1, 2, 3, 4, 5, 6, 7, 8, 9} -> array
 	print binary_search(array, 8)
 	time_end()
