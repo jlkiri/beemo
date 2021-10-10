@@ -46,7 +46,7 @@ pub enum Expr {
     Grouping(Box<Expr>),
     Assignment(String, Box<Expr>),
     Unary(TokenType, Box<Expr>),
-    Variable(String),
+    Variable(Token, String),
     Logical(TokenType, Box<Expr>, Box<Expr>),
     Binary(TokenType, Box<Expr>, Box<Expr>),
     Call(String, Vec<Expr>),
@@ -169,13 +169,12 @@ impl<'a> Parser<'a> {
         None
     }
 
-    fn read_token_if_ident(&mut self) -> Option<String> {
+    fn read_token_if_ident(&mut self) -> Option<(Token, String)> {
         self.tokens
             .next_if(|t| matches!(t.1.ty, TokenType::Identifier(..)))
-            .and_then(|t| match t.1 {
-                Token { ty, .. } => {
-                    Some(ty.string_value().unwrap().to_string()) // Safe unwrap.
-                }
+            .and_then(|t| {
+                let val = t.1.ty.string_value().unwrap().to_string();
+                Some((t.1, val))
             })
     }
 
@@ -206,7 +205,7 @@ impl<'a> Parser<'a> {
     fn params(&mut self) -> Result<Vec<String>> {
         let mut parameters = vec![];
         while {
-            if let Some(token) = self.read_token_if_ident() {
+            if let Some((_, token)) = self.read_token_if_ident() {
                 parameters.push(token);
             }
 
@@ -256,7 +255,7 @@ impl<'a> Parser<'a> {
     }
 
     fn function(&mut self) -> Result<Stmt> {
-        let name = self
+        let (_, name) = self
             .read_token_if_ident()
             .ok_or(self.err(ErrorKind::ExpectedFunctionName))?;
 
@@ -348,7 +347,7 @@ impl<'a> Parser<'a> {
         self.read_token_if(&TokenType::ClosingBracket)
             .ok_or(self.err(ErrorKind::MissingClosingBracket))?;
         let target = match lit {
-            Expr::Variable(target) => target,
+            Expr::Variable(_, target) => target,
             _ => Err(self.err(ErrorKind::InvalidIndexTarget))?,
         };
         Ok(Expr::IndexAccess(target, Box::new(member)))
@@ -356,7 +355,7 @@ impl<'a> Parser<'a> {
 
     fn call(&mut self, lit: Expr) -> Result<Expr> {
         let callee = match lit {
-            Expr::Variable(callee) => callee,
+            Expr::Variable(_, callee) => callee,
             _ => Err(self.err(ErrorKind::UnexpectedToken))?,
         };
 
@@ -382,7 +381,7 @@ impl<'a> Parser<'a> {
         // TODO: Make push (>>) parsing cleaner.
         if let Some(v) = self.read_token_if_float() {
             if self.read_token_if(&TokenType::Push).is_some() {
-                let array = self
+                let (_, array) = self
                     .read_token_if_ident()
                     .ok_or(self.err(ErrorKind::BadPush))?;
                 return Ok(Expr::Push(array, Box::new(Expr::Literal(Value::Number(v)))));
@@ -414,14 +413,14 @@ impl<'a> Parser<'a> {
         }
 
         match self.read_token_if_ident() {
-            Some(v) => {
+            Some((t, val)) => {
                 if self.read_token_if(&TokenType::Push).is_some() {
-                    let array = self
+                    let (_, array) = self
                         .read_token_if_ident()
                         .ok_or(self.err(ErrorKind::BadPush))?;
-                    return Ok(Expr::Push(array, Box::new(Expr::Variable(v))));
+                    return Ok(Expr::Push(array, Box::new(Expr::Variable(t, val))));
                 }
-                Ok(Expr::Variable(v))
+                Ok(Expr::Variable(t, val))
             }
             None => Err(self.err(ErrorKind::BadLiteral)),
         }
@@ -487,7 +486,7 @@ impl<'a> Parser<'a> {
         if self.read_token_if(&TokenType::Assign).is_some() {
             let assignee = self.expression()?;
             match assignee {
-                Expr::Variable(var) => Ok(Expr::Assignment(var, Box::new(rvalue))),
+                Expr::Variable(_, var) => Ok(Expr::Assignment(var, Box::new(rvalue))),
                 _ => Err(self.err_on_prev(ErrorKind::NotAssignable))?,
             }
         } else {

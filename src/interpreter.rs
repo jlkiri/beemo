@@ -7,7 +7,7 @@ use crate::{
     function::*,
     parser::Stmt,
     parser::{Expr, Value},
-    scanner::TokenType,
+    scanner::{Token, TokenType},
 };
 
 use miette::Diagnostic;
@@ -24,7 +24,9 @@ pub enum ErrorKind {
     ParameterArgumentMismatch,
     NothingReturned,
     NotComparable,
-    VariableUndefined,
+    #[error("Use of undefined variable.")]
+    #[diagnostic(help("{0} is undefined."))]
+    VariableUndefined(String),
     ReturnNotExpression,
     NotCallable,
     NotIndexable,
@@ -34,6 +36,7 @@ pub enum ErrorKind {
 
 pub struct Interpreter<'a> {
     pub globals: Environment<'a>,
+    source: &'a str,
 }
 
 #[derive(Debug, Clone)]
@@ -65,15 +68,15 @@ impl Callable for TimeEnd {
     }
 }
 
-impl Interpreter<'_> {
-    pub fn new() -> Self {
+impl<'source> Interpreter<'source> {
+    pub fn new(source: &'source str) -> Self {
         let globals = Environment::new();
         globals.define(
             "time_start".to_string(),
             Value::Callable(Box::new(TimeStart)),
         );
         globals.define("time_end".to_string(), Value::Callable(Box::new(TimeEnd)));
-        Self { globals }
+        Self { globals, source }
     }
 
     pub fn interpret(&self, stmts: Vec<Stmt>) -> Result<()> {
@@ -128,9 +131,18 @@ impl Interpreter<'_> {
         Ok(())
     }
 
-    pub fn eval_var_expr(&self, name: String, env: &Environment) -> Result<Value> {
+    pub fn err(&self, kind: ErrorKind, token: Token) -> BeemoError {
+        BeemoError::ParserError(
+            self.source.to_string(),
+            token.span,
+            kind.to_string(),
+            kind.help().unwrap().to_string(),
+        )
+    }
+
+    pub fn eval_var_expr(&self, token: Token, name: String, env: &Environment) -> Result<Value> {
         env.get(&name)
-            .ok_or(BeemoError::RuntimeError(ErrorKind::VariableUndefined))
+            .ok_or(self.err(ErrorKind::VariableUndefined(name), token))
     }
 
     pub fn eval_call_expr(
@@ -144,9 +156,11 @@ impl Interpreter<'_> {
             let value = self.eval_expr(expr, env)?;
             arguments.push(value);
         }
-        let func = env
-            .get(&callee)
-            .ok_or(BeemoError::RuntimeError(ErrorKind::VariableUndefined))?;
+        let func =
+            env.get(&callee)
+                .ok_or(BeemoError::RuntimeError(ErrorKind::VariableUndefined(
+                    callee,
+                )))?;
         match func {
             Value::Callable(f) => {
                 let ret = f.call(self, arguments)?;
@@ -282,9 +296,11 @@ impl Interpreter<'_> {
         expr: Expr,
         env: &Environment,
     ) -> Result<Value> {
-        let array = env
-            .get(&target)
-            .ok_or(BeemoError::RuntimeError(ErrorKind::VariableUndefined))?;
+        let array =
+            env.get(&target)
+                .ok_or(BeemoError::RuntimeError(ErrorKind::VariableUndefined(
+                    target,
+                )))?;
         match array {
             Value::Array(vec) => {
                 let index = self.eval_expr(expr, env)?;
@@ -308,13 +324,15 @@ impl Interpreter<'_> {
     fn eval_push_expr(&self, array: String, expr: Expr, env: &Environment) -> Result<Value> {
         let val = self.eval_expr(expr, env)?;
         env.vec_push(&array, val.clone())
-            .ok_or(BeemoError::RuntimeError(ErrorKind::VariableUndefined))?;
+            .ok_or(BeemoError::RuntimeError(ErrorKind::VariableUndefined(
+                array,
+            )))?;
         Ok(val)
     }
 
     pub fn eval_expr(&self, expr: Expr, env: &Environment) -> Result<Value> {
         match expr {
-            Expr::Variable(name) => self.eval_var_expr(name, env),
+            Expr::Variable(token, name) => self.eval_var_expr(token, name, env),
             Expr::Push(array, expr) => self.eval_push_expr(array, *expr, env),
             Expr::IndexAccess(target, expr) => self.eval_index_access_expr(target, *expr, env),
             Expr::Call(callee, args) => self.eval_call_expr(callee, args, env),
@@ -332,8 +350,8 @@ impl Interpreter<'_> {
         for (i, stmt) in stmts.into_iter().enumerate() {
             let is_last = i == length - 1; // Function block.
             match stmt {
-                Stmt::Expression(e @ Expr::Variable(_)) if is_last => {
-                    let result = self.eval_expr(e, &env)?;
+                Stmt::Expression(var @ Expr::Variable(..)) if is_last => {
+                    let result = self.eval_expr(var, &env)?;
                     env.define("return".to_string(), result);
                     return Ok(());
                 }

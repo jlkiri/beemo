@@ -27,8 +27,14 @@ pub enum BeemoError {
         Description,
         Help,
     ),
-    #[error("Runtime error.")]
-    RuntimeError(interpreter::ErrorKind),
+    #[error("Runtime error: {2}")]
+    #[diagnostic(code(beemo::interpreter), help("{3}"))]
+    RuntimeError(
+        #[source_code] String,
+        #[label = "Here."] Span,
+        Description,
+        Help,
+    ),
     #[error("Internal error.")]
     InternalError,
 }

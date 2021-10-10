@@ -25,7 +25,7 @@ fn main() -> Result<()> {
     let tokens = scan(&source)?;
     let mut parser = Parser::new(&source, tokens);
     let res = parser.parse()?;
-    let interpreter = Interpreter::new();
+    let interpreter = Interpreter::new(&source);
     interpreter.interpret(res).expect("derp");
     Ok(())
 }
