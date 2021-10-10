@@ -19,7 +19,7 @@ use nom::number::complete::float;
 use nom::sequence::{pair, preceded, terminated};
 use nom::Err::Failure;
 use nom::Finish;
-use nom::Offset;
+use nom::Offset as NomOffset;
 use nom::{self};
 
 use thiserror::Error;
@@ -27,9 +27,12 @@ use thiserror::Error;
 use crate::error::BeemoError;
 
 pub type Result<'a, T> = nom::IResult<&'a str, T, NomScanError<&'a str>>;
+
 type Description = String;
 type Help = String;
 type TokenLength = usize;
+type Span = (usize, usize);
+type Offset = usize;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum ErrorKind {
@@ -66,7 +69,10 @@ impl<I> NomScanError<I> {
 #[derive(Debug, PartialEq, Clone)]
 pub struct Token {
     pub ty: TokenType,
+    pub span: Span,
 }
+
+struct ProtoToken<'input>(TokenType, &'input str, Offset);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
@@ -116,8 +122,8 @@ struct IndentationCounter {
     current: isize,
 }
 
-fn keyword(input: &str) -> Result<TokenType> {
-    map(
+fn keyword(input: &str) -> Result<ProtoToken> {
+    let (rest, tt) = map(
         alt((
             tag("return"),
             tag("print"),
@@ -130,10 +136,11 @@ fn keyword(input: &str) -> Result<TokenType> {
             tag("in"),
         )),
         |k: &str| TokenType::Keyword(k.to_string()),
-    )(input)
+    )(input)?;
+    Ok((rest, ProtoToken(tt, input, input.offset(rest))))
 }
 
-fn identifier(input: &str) -> Result<TokenType> {
+fn identifier(input: &str) -> Result<ProtoToken> {
     match map(
         recognize(pair(
             alpha1,
@@ -142,13 +149,10 @@ fn identifier(input: &str) -> Result<TokenType> {
         |s: &str| TokenType::Identifier(s.to_string()),
     )(input)
     {
-        Ok((rest, t)) => Ok((rest, t)),
+        Ok((rest, t)) => Ok((rest, ProtoToken(t, input, input.offset(rest)))),
         Err(nom::Err::Error(_)) => {
-            let (next, _) = many_till::<_, _, _, (), _, _>(
-                anychar,
-                alt((space1, tag("("))), /* alt((space1, line_ending)) */
-            )(input)
-            .expect("Impossible to find a span.");
+            let (next, _) = many_till::<_, _, _, (), _, _>(anychar, alt((space1, tag("("))))(input)
+                .expect("FATAL: Impossible to find a span of the bad identifier.");
             let span = input.offset(next) - 1; // Do not count matched whitespace;
             Err(Failure(NomScanError::custom(
                 span,
@@ -161,7 +165,10 @@ fn identifier(input: &str) -> Result<TokenType> {
     }
 }
 
-fn indentation<'a>(input: &'a str, counter: &mut IndentationCounter) -> Result<'a, Vec<TokenType>> {
+fn indentation<'a>(
+    input: &'a str,
+    counter: &mut IndentationCounter,
+) -> Result<'a, Vec<ProtoToken>> {
     let (rest, tabs) = many0(tab)(input)?;
     let mut indent_tokens = vec![];
     let indent_level = tabs.len() as isize;
@@ -179,81 +186,159 @@ fn indentation<'a>(input: &'a str, counter: &mut IndentationCounter) -> Result<'
     Ok((rest, indent_tokens))
 }
 
-fn number(input: &str) -> Result<TokenType> {
+fn number(input: &str) -> Result<ProtoToken> {
     // Disallow alphabetic chars explicitly to treat the whole thing as a potential bad identifier.
-    map(terminated(float, not(alpha1)), |v| TokenType::Float(v))(input)
+    let (rest, tt) = map(terminated(float, not(alpha1)), |v| TokenType::Float(v))(input)?;
+    Ok((rest, ProtoToken(tt, input, input.offset(rest))))
 }
 
-fn string(input: &str) -> Result<TokenType> {
+fn string(input: &str) -> Result<ProtoToken> {
     let (lquote, _) = char('"')(input)?;
-    let (input, value) = take_till(|c| c == '"')(lquote)?;
-    let (input, _) =
+    let (body, value) = take_till(|c| c == '"')(lquote)?;
+    let (rquote, _) =
         char::<_, NomScanError<&str>>('"')(input).or(Err(Failure(NomScanError::custom(
             0,
             lquote,
             r#"Missing closing quote"#.to_string(),
             r#"Did you forget '"'?"#.to_string(),
         ))))?;
-    Ok((input, TokenType::String(value.to_string())))
+    Ok((
+        input,
+        ProtoToken(
+            TokenType::String(value.to_string()),
+            input,
+            input.offset(rquote),
+        ),
+    ))
 }
 
-fn maybe_string(input: &str) -> Result<TokenType> {
+fn maybe_string(input: &str) -> Result<ProtoToken> {
     alt((string, non_string))(input)
 }
 
-fn complex_symbol(input: &str) -> Result<TokenType> {
-    alt((
+fn complex_symbol(input: &str) -> Result<ProtoToken> {
+    let (rest, tt) = alt((
         value(TokenType::Assign, tag("->")),
         value(TokenType::EqualEqual, tag("==")),
         value(TokenType::GreaterEqual, tag(">=")),
         value(TokenType::LessEqual, tag("<=")),
         value(TokenType::Push, tag(">>")),
-    ))(input)
+    ))(input)?;
+    Ok((rest, ProtoToken(tt, input, input.offset(rest))))
 }
 
-fn non_string(input: &str) -> Result<TokenType> {
-    let (input, token) = alt((
+fn op_bracket(input: &str) -> Result<ProtoToken> {
+    let (rest, tt) = value(TokenType::OpeningBracket, tag("["))(input)?;
+    Ok((rest, ProtoToken(tt, input, input.offset(rest))))
+}
+
+fn cl_bracket(input: &str) -> Result<ProtoToken> {
+    let (rest, tt) = value(TokenType::ClosingBracket, tag("]"))(input)?;
+    Ok((rest, ProtoToken(tt, input, input.offset(rest))))
+}
+
+fn op_brace(input: &str) -> Result<ProtoToken> {
+    let (rest, tt) = value(TokenType::OpeningBrace, tag("{"))(input)?;
+    Ok((rest, ProtoToken(tt, input, input.offset(rest))))
+}
+
+fn cl_brace(input: &str) -> Result<ProtoToken> {
+    let (rest, tt) = value(TokenType::ClosingBrace, tag("}"))(input)?;
+    Ok((rest, ProtoToken(tt, input, input.offset(rest))))
+}
+
+fn op_paren(input: &str) -> Result<ProtoToken> {
+    let (rest, tt) = value(TokenType::OpeningParen, tag("("))(input)?;
+    Ok((rest, ProtoToken(tt, input, input.offset(rest))))
+}
+
+fn cl_paren(input: &str) -> Result<ProtoToken> {
+    let (rest, tt) = value(TokenType::ClosingParen, tag(")"))(input)?;
+    Ok((rest, ProtoToken(tt, input, input.offset(rest))))
+}
+
+fn plus(input: &str) -> Result<ProtoToken> {
+    let (rest, tt) = value(TokenType::Plus, tag("+"))(input)?;
+    Ok((rest, ProtoToken(tt, input, input.offset(rest))))
+}
+
+fn multiply(input: &str) -> Result<ProtoToken> {
+    let (rest, tt) = value(TokenType::Multiply, tag("*"))(input)?;
+    Ok((rest, ProtoToken(tt, input, input.offset(rest))))
+}
+
+fn minus(input: &str) -> Result<ProtoToken> {
+    let (rest, tt) = value(TokenType::Minus, tag("-"))(input)?;
+    Ok((rest, ProtoToken(tt, input, input.offset(rest))))
+}
+
+fn divide(input: &str) -> Result<ProtoToken> {
+    let (rest, tt) = value(TokenType::Divide, tag("/"))(input)?;
+    Ok((rest, ProtoToken(tt, input, input.offset(rest))))
+}
+
+fn colon(input: &str) -> Result<ProtoToken> {
+    let (rest, tt) = value(TokenType::Colon, tag(":"))(input)?;
+    Ok((rest, ProtoToken(tt, input, input.offset(rest))))
+}
+
+fn bang(input: &str) -> Result<ProtoToken> {
+    let (rest, tt) = value(TokenType::Bang, tag("!"))(input)?;
+    Ok((rest, ProtoToken(tt, input, input.offset(rest))))
+}
+
+fn comma(input: &str) -> Result<ProtoToken> {
+    let (rest, tt) = value(TokenType::Comma, tag(","))(input)?;
+    Ok((rest, ProtoToken(tt, input, input.offset(rest))))
+}
+
+fn modulo(input: &str) -> Result<ProtoToken> {
+    let (rest, tt) = value(TokenType::Modulo, tag("%"))(input)?;
+    Ok((rest, ProtoToken(tt, input, input.offset(rest))))
+}
+
+fn gt(input: &str) -> Result<ProtoToken> {
+    let (rest, tt) = value(TokenType::GreaterThan, tag(">"))(input)?;
+    Ok((rest, ProtoToken(tt, input, input.offset(rest))))
+}
+
+fn lt(input: &str) -> Result<ProtoToken> {
+    let (rest, tt) = value(TokenType::LessThan, tag("<"))(input)?;
+    Ok((rest, ProtoToken(tt, input, input.offset(rest))))
+}
+
+fn non_string(input: &str) -> Result<ProtoToken> {
+    let (rest, token) = alt((
         complex_symbol,
-        value(TokenType::OpeningBracket, tag("[")),
-        value(TokenType::ClosingBracket, tag("]")),
-        value(TokenType::OpeningBrace, tag("{")),
-        value(TokenType::ClosingBrace, tag("}")),
-        value(TokenType::OpeningParen, tag("(")),
-        value(TokenType::ClosingParen, tag(")")),
-        value(TokenType::Plus, tag("+")),
-        value(TokenType::Multiply, tag("*")),
-        value(TokenType::Minus, tag("-")),
-        value(TokenType::Divide, tag("/")),
-        value(TokenType::Colon, tag(":")),
-        value(TokenType::Bang, tag("!")),
-        value(TokenType::Comma, tag(",")),
-        value(TokenType::Modulo, tag("%")),
-        value(TokenType::GreaterThan, tag(">")),
-        value(TokenType::LessThan, tag("<")),
+        op_bracket,
+        cl_bracket,
+        op_brace,
+        cl_brace,
+        op_paren,
+        cl_paren,
+        plus,
+        multiply,
+        minus,
+        divide,
+        colon,
+        bang,
+        comma,
+        modulo,
+        gt,
+        lt,
         keyword,
         number,
         // Test for identifier only if everything else failed.
         identifier,
     ))(input)?;
-    Ok((input, token))
+    Ok((rest, token))
 }
 
-fn tokens(input: &str) -> Result<Vec<TokenType>> {
+fn tokens(input: &str) -> Result<Vec<ProtoToken>> {
     not(eof)(input)?;
     let (input, (tokens, _)) = many_till(preceded(space0, maybe_string), line_ending)(input)?;
     Ok((input, tokens))
 }
-
-/* fn preceding_lines(input: &str) -> Result<(Vec<()>, &str)> {
-    terminated(many_till(value((), anychar), line_ending), not(eof))(input)
-}
-
-fn count_preceding_lines(input: &str) -> (&str, usize) {
-    let mut iter = iterator(input, preceding_lines);
-    let count = iter.count();
-    let (rest, _) = iter.finish().finish().expect("Should not fail.");
-    (rest, count)
-} */
 
 fn scan_lines(
     source: &str,
