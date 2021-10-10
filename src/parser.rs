@@ -15,9 +15,6 @@ pub struct Parser<'a> {
 
 type IfBranch = Vec<Stmt>;
 type ElseBranch = Vec<Stmt>;
-type Description = String;
-type Help = String;
-type Span = (usize, usize);
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
@@ -55,36 +52,62 @@ pub enum Expr {
 }
 
 #[derive(Debug, Error, Diagnostic)]
-#[error("Errorkind")]
+#[error("Parser error.")]
 pub enum ErrorKind {
+    #[error("Unexpected EOF (end of file).")]
+    #[diagnostic(help("Does your file end with a newline?"))]
     UnexpectedEof,
+    #[error("Unexpected token.")]
+    #[diagnostic(help("Not much to say."))]
     UnexpectedToken,
+    #[error("Invalid index target.")]
+    #[diagnostic(help("This type cannot be indexed. Are you sure this is an array?"))]
     InvalidIndexTarget,
+    #[error("Invalid assignment target.")]
+    #[diagnostic(help("This thing cannot be assigned a value."))]
     NotAssignable,
-    #[error("fn name")]
-    #[diagnostic(help("poop"))]
+    #[error("Expected a function name.")]
+    #[diagnostic(help("All function must have a unique name."))]
     ExpectedFunctionName,
+    #[error("Expected an argument.")]
+    #[diagnostic(help("Only arguments can appear in this position."))]
     ExpectedArgument,
+    #[error("Expected a number.")]
+    #[diagnostic(help("Only numbers can appear in this position."))]
     ExpectedNumber,
+    #[error("Not a literal.")]
+    #[diagnostic(help("Only literals can appear in this position."))]
     BadLiteral,
+    #[error("Missing closing bracket.")]
+    #[diagnostic(help("Missing closing bracket."))]
     MissingClosingBracket,
+    #[error("Missing closing parenthesis.")]
+    #[diagnostic(help("Missing closing parenthesis."))]
     MissingClosingParen,
+    #[error("Missing closing brace.")]
+    #[diagnostic(help("Missing closing brace."))]
     MissingClosingBrace,
+    #[error("Missing closing parenthesis.")]
+    #[diagnostic(help("Missing closing parenthesis."))]
     MissingClosingParenInCall,
+    #[error("Internal parser error.")]
+    #[diagnostic(help("There is likely to be a bug in the parser."))]
     Internal,
+    #[error("Missing colon.")]
+    #[diagnostic(help("Missing colon."))]
     ExpectedColon,
+    #[error("Bad indentation.")]
+    #[diagnostic(help("Expected indendation."))]
     ExpectedIndent,
+    #[error("Bad indentation.")]
+    #[diagnostic(help("Expected dedent."))]
     ExpectedDedent,
+    #[error("Bad call.")]
+    #[diagnostic(help("This expression is not callable."))]
     BadCall,
+    #[error("Bad push.")]
+    #[diagnostic(help("This expression cannot be pushed to."))]
     BadPush,
-}
-
-impl ErrorKind {
-    fn span(&self) -> Span {
-        match self {
-            _ => todo!(),
-        }
-    }
 }
 
 impl Value {
@@ -170,16 +193,12 @@ impl<'a> Parser<'a> {
     }
 
     fn read_token_if_float(&mut self) -> Option<f32> {
-        match self.tokens.peek() {
-            Some(token) => match &token.ty {
-                TokenType::Float(value) => {
-                    self.read_token();
-                    Some(value.clone())
-                }
-                _ => None,
-            },
-            _ => None,
-        }
+        self.tokens
+            .next_if(|t| matches!(t.ty, TokenType::Float(_)))
+            .and_then(|t| match t {
+                Token { ty, .. } => Some(ty.num_value().unwrap()), // Safe unwrap.
+                _ => unreachable!(),
+            })
     }
 
     fn params(&mut self) -> Result<Vec<String>> {

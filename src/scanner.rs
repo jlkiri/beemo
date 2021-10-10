@@ -115,6 +115,13 @@ impl TokenType {
             _ => None,
         }
     }
+
+    pub fn num_value(&self) -> Option<f32> {
+        match *self {
+            TokenType::Float(n) => Some(n),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug)]
