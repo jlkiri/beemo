@@ -25,7 +25,7 @@ pub enum ErrorKind {
     NothingReturned,
     NotComparable,
     #[error("Use of undefined variable.")]
-    #[diagnostic(help("{0} is undefined."))]
+    #[diagnostic(help("{0} is not undefined."))]
     VariableUndefined(String),
     ReturnNotExpression,
     NotCallable,
@@ -86,7 +86,7 @@ impl<'source> Interpreter<'source> {
         let main = self
             .globals
             .get("main")
-            .ok_or(BeemoError::RuntimeError(ErrorKind::NoMain))?;
+            .ok_or(self.err_plain(ErrorKind::NoMain))?;
         match main {
             Value::Callable(f) => {
                 f.call(self, Default::default())?;
@@ -111,7 +111,7 @@ impl<'source> Interpreter<'source> {
     ) -> Result<()> {
         let condition = self.eval_expr(cond, &env)?;
         if !condition.is_bool() {
-            return Err(BeemoError::RuntimeError(ErrorKind::NotBoolean));
+            return Err(self.err_plain(ErrorKind::NotBoolean));
         }
         match condition {
             Value::Bool(true) => self.eval_block(if_branch, &env)?,
@@ -132,11 +132,21 @@ impl<'source> Interpreter<'source> {
     }
 
     pub fn err(&self, kind: ErrorKind, token: Token) -> BeemoError {
-        BeemoError::ParserError(
+        BeemoError::RuntimeError(
             self.source.to_string(),
             token.span,
             kind.to_string(),
             kind.help().unwrap().to_string(),
+        )
+    }
+
+    // Remove when all errors have a token reference.
+    pub fn err_plain(&self, kind: ErrorKind) -> BeemoError {
+        BeemoError::RuntimeError(
+            self.source.to_string(),
+            (0, 0),
+            kind.to_string(),
+            kind.help().unwrap_or(Box::new("No help.")).to_string(),
         )
     }
 
@@ -156,17 +166,15 @@ impl<'source> Interpreter<'source> {
             let value = self.eval_expr(expr, env)?;
             arguments.push(value);
         }
-        let func =
-            env.get(&callee)
-                .ok_or(BeemoError::RuntimeError(ErrorKind::VariableUndefined(
-                    callee,
-                )))?;
+        let func = env
+            .get(&callee)
+            .ok_or(self.err_plain(ErrorKind::VariableUndefined(callee)))?;
         match func {
             Value::Callable(f) => {
                 let ret = f.call(self, arguments)?;
                 Ok(ret)
             }
-            _ => Err(BeemoError::RuntimeError(ErrorKind::NotCallable)),
+            _ => Err(self.err_plain(ErrorKind::NotCallable)),
         }
     }
 
@@ -186,7 +194,7 @@ impl<'source> Interpreter<'source> {
                     let rexpr = self.eval_expr(rhs, env)?;
                     match (lexpr, rexpr) {
                         (Value::Bool(l), Value::Bool(r)) => Ok(Value::Bool(l || r)),
-                        _ => Err(BeemoError::RuntimeError(ErrorKind::WrongOperand)),
+                        _ => Err(self.err_plain(ErrorKind::WrongOperand)),
                     }
                 }
             }
@@ -197,11 +205,11 @@ impl<'source> Interpreter<'source> {
                     let rexpr = self.eval_expr(rhs, env)?;
                     match (lexpr, rexpr) {
                         (Value::Bool(l), Value::Bool(r)) => Ok(Value::Bool(l && r)),
-                        _ => Err(BeemoError::RuntimeError(ErrorKind::WrongOperand)),
+                        _ => Err(self.err_plain(ErrorKind::WrongOperand)),
                     }
                 }
             }
-            _ => Err(BeemoError::RuntimeError(ErrorKind::NotInfixOperator)),
+            _ => Err(self.err_plain(ErrorKind::NotInfixOperator)),
         }
     }
 
@@ -211,17 +219,17 @@ impl<'source> Interpreter<'source> {
                 let bool = self.eval_expr(expr, env)?;
                 match bool {
                     Value::Bool(bool) => Ok(Value::Bool(!bool)),
-                    _ => Err(BeemoError::RuntimeError(ErrorKind::NotBoolean)),
+                    _ => Err(self.err_plain(ErrorKind::NotBoolean)),
                 }
             }
             TokenType::Minus => {
                 let val = self.eval_expr(expr, env)?;
                 match val {
                     Value::Number(num) => Ok(Value::Number(-num)),
-                    _ => Err(BeemoError::RuntimeError(ErrorKind::NotNumber)),
+                    _ => Err(self.err_plain(ErrorKind::NotNumber)),
                 }
             }
-            _ => Err(BeemoError::RuntimeError(ErrorKind::NotUnaryOperator)),
+            _ => Err(self.err_plain(ErrorKind::NotUnaryOperator)),
         }
     }
 
@@ -237,45 +245,45 @@ impl<'source> Interpreter<'source> {
         match op {
             TokenType::Plus => match (lexpr, rexpr) {
                 (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l + r)),
-                _ => Err(BeemoError::RuntimeError(ErrorKind::WrongOperand)),
+                _ => Err(self.err_plain(ErrorKind::WrongOperand)),
             },
             TokenType::Minus => match (lexpr, rexpr) {
                 (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l - r)),
-                _ => Err(BeemoError::RuntimeError(ErrorKind::WrongOperand)),
+                _ => Err(self.err_plain(ErrorKind::WrongOperand)),
             },
             TokenType::Multiply => match (lexpr, rexpr) {
                 (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l * r)),
-                _ => Err(BeemoError::RuntimeError(ErrorKind::WrongOperand)),
+                _ => Err(self.err_plain(ErrorKind::WrongOperand)),
             },
             TokenType::Divide => match (lexpr, rexpr) {
                 (Value::Number(l), Value::Number(r)) => Ok(Value::Number((l / r).floor())),
-                _ => Err(BeemoError::RuntimeError(ErrorKind::WrongOperand)),
+                _ => Err(self.err_plain(ErrorKind::WrongOperand)),
             },
             TokenType::EqualEqual => match (lexpr, rexpr) {
                 (Value::Number(l), Value::Number(r)) => Ok(Value::Bool(l == r)),
-                _ => Err(BeemoError::RuntimeError(ErrorKind::NotComparable)),
+                _ => Err(self.err_plain(ErrorKind::NotComparable)),
             },
             TokenType::GreaterThan => match (lexpr, rexpr) {
                 (Value::Number(l), Value::Number(r)) => Ok(Value::Bool(l > r)),
-                _ => Err(BeemoError::RuntimeError(ErrorKind::NotComparable)),
+                _ => Err(self.err_plain(ErrorKind::NotComparable)),
             },
             TokenType::GreaterEqual => match (lexpr, rexpr) {
                 (Value::Number(l), Value::Number(r)) => Ok(Value::Bool(l >= r)),
-                _ => Err(BeemoError::RuntimeError(ErrorKind::NotComparable)),
+                _ => Err(self.err_plain(ErrorKind::NotComparable)),
             },
             TokenType::LessThan => match (lexpr, rexpr) {
                 (Value::Number(l), Value::Number(r)) => Ok(Value::Bool(l < r)),
-                _ => Err(BeemoError::RuntimeError(ErrorKind::NotComparable)),
+                _ => Err(self.err_plain(ErrorKind::NotComparable)),
             },
             TokenType::LessEqual => match (lexpr, rexpr) {
                 (Value::Number(l), Value::Number(r)) => Ok(Value::Bool(l <= r)),
-                _ => Err(BeemoError::RuntimeError(ErrorKind::NotComparable)),
+                _ => Err(self.err_plain(ErrorKind::NotComparable)),
             },
             TokenType::Modulo => match (lexpr, rexpr) {
                 (Value::Number(l), Value::Number(r)) => Ok(Value::Number(l % r)),
-                _ => Err(BeemoError::RuntimeError(ErrorKind::NotComparable)),
+                _ => Err(self.err_plain(ErrorKind::NotComparable)),
             },
-            _ => Err(BeemoError::RuntimeError(ErrorKind::NotInfixOperator)),
+            _ => Err(self.err_plain(ErrorKind::NotInfixOperator)),
         }
     }
 
@@ -296,11 +304,9 @@ impl<'source> Interpreter<'source> {
         expr: Expr,
         env: &Environment,
     ) -> Result<Value> {
-        let array =
-            env.get(&target)
-                .ok_or(BeemoError::RuntimeError(ErrorKind::VariableUndefined(
-                    target,
-                )))?;
+        let array = env
+            .get(&target)
+            .ok_or(self.err_plain(ErrorKind::VariableUndefined(target)))?;
         match array {
             Value::Array(vec) => {
                 let index = self.eval_expr(expr, env)?;
@@ -314,19 +320,17 @@ impl<'source> Interpreter<'source> {
                             Ok(Value::Number(vec[n]))
                         }
                     }
-                    _ => Err(BeemoError::RuntimeError(ErrorKind::CannotBeIndexedBy)),
+                    _ => Err(self.err_plain(ErrorKind::CannotBeIndexedBy)),
                 }
             }
-            _ => Err(BeemoError::RuntimeError(ErrorKind::NotIndexable)),
+            _ => Err(self.err_plain(ErrorKind::NotIndexable)),
         }
     }
 
     fn eval_push_expr(&self, array: String, expr: Expr, env: &Environment) -> Result<Value> {
         let val = self.eval_expr(expr, env)?;
         env.vec_push(&array, val.clone())
-            .ok_or(BeemoError::RuntimeError(ErrorKind::VariableUndefined(
-                array,
-            )))?;
+            .ok_or(self.err_plain(ErrorKind::VariableUndefined(array)))?;
         Ok(val)
     }
 
