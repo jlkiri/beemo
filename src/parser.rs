@@ -65,7 +65,7 @@ pub enum ErrorKind {
     #[diagnostic(help("This type cannot be indexed. Are you sure this is an array?"))]
     InvalidIndexTarget,
     #[error("Invalid assignment target.")]
-    #[diagnostic(help("This thing cannot be assigned a value."))]
+    #[diagnostic(help("Only variables (but not other expressions) can be assigned a value."))]
     NotAssignable,
     #[error("Expected a function name.")]
     #[diagnostic(help("All function must have a unique name."))]
@@ -223,8 +223,18 @@ impl<'a> Parser<'a> {
         self.check(&TokenType::Eof) || self.check(&TokenType::Dedent)
     }
 
-    fn err(&mut self, kind: ErrorKind) -> BeemoError {
+    fn err_on_prev(&mut self, kind: ErrorKind) -> BeemoError {
         let prev = self.previous().unwrap();
+        BeemoError::ParserError(
+            self.source.to_string(),
+            prev.span,
+            kind.to_string(),
+            kind.help().unwrap().to_string(),
+        )
+    }
+
+    fn err(&mut self, kind: ErrorKind) -> BeemoError {
+        let prev = self.peek_token().unwrap();
         BeemoError::ParserError(
             self.source.to_string(),
             prev.span,
@@ -257,7 +267,7 @@ impl<'a> Parser<'a> {
             Some(TokenType::OpeningParen) => {
                 let params = self.params()?;
                 self.read_token_if(&TokenType::Colon)
-                    .ok_or(self.err(ErrorKind::ExpectedColon))?;
+                    .ok_or(self.err_on_prev(ErrorKind::ExpectedColon))?;
                 let body = self.block()?;
                 Ok(Stmt::FunctionDeclaration(Function { params, name, body }))
             }
@@ -269,7 +279,7 @@ impl<'a> Parser<'a> {
                     body,
                 }))
             }
-            _ => Err(self.err(ErrorKind::ExpectedColon)),
+            _ => Err(self.err_on_prev(ErrorKind::ExpectedColon)),
         }
     }
 
@@ -364,7 +374,7 @@ impl<'a> Parser<'a> {
             // Do-while loop.
         }
         self.read_token_if(&TokenType::ClosingParen)
-            .ok_or(self.err(ErrorKind::MissingClosingParenInCall))?;
+            .ok_or(self.err_on_prev(ErrorKind::MissingClosingParenInCall))?;
         Ok(Expr::Call(callee, arguments))
     }
 
@@ -399,7 +409,7 @@ impl<'a> Parser<'a> {
         if self.read_token_if(&TokenType::OpeningParen).is_some() {
             let group = self.expression()?;
             self.read_token_if(&TokenType::ClosingParen)
-                .ok_or(self.err(ErrorKind::MissingClosingParen))?;
+                .ok_or(self.err_on_prev(ErrorKind::MissingClosingParen))?;
             return Ok(Expr::Grouping(Box::new(group)));
         }
 
@@ -478,7 +488,7 @@ impl<'a> Parser<'a> {
             let assignee = self.expression()?;
             match assignee {
                 Expr::Variable(var) => Ok(Expr::Assignment(var, Box::new(rvalue))),
-                _ => Err(self.err(ErrorKind::NotAssignable))?,
+                _ => Err(self.err_on_prev(ErrorKind::NotAssignable))?,
             }
         } else {
             Ok(rvalue)
@@ -498,7 +508,7 @@ impl<'a> Parser<'a> {
             }) if k == "else" => {
                 self.read_token();
                 self.read_token_if(&TokenType::Colon)
-                    .ok_or(self.err(ErrorKind::ExpectedColon))?;
+                    .ok_or(self.err_on_prev(ErrorKind::ExpectedColon))?;
                 let block = self.block()?;
                 Ok(Some(block))
             }
@@ -509,7 +519,7 @@ impl<'a> Parser<'a> {
     fn if_statement(&mut self) -> Result<Stmt> {
         let expr = self.expression()?;
         self.read_token_if(&TokenType::Colon)
-            .ok_or(self.err(ErrorKind::ExpectedColon))?;
+            .ok_or(self.err_on_prev(ErrorKind::ExpectedColon))?;
         let if_branch = self.block()?;
         let else_branch = self.else_branch()?;
         Ok(Stmt::Condition(expr, if_branch, else_branch))
@@ -518,7 +528,7 @@ impl<'a> Parser<'a> {
     fn while_statement(&mut self) -> Result<Stmt> {
         let condition = self.expression()?;
         self.read_token_if(&TokenType::Colon)
-            .ok_or(self.err(ErrorKind::ExpectedColon))?;
+            .ok_or(self.err_on_prev(ErrorKind::ExpectedColon))?;
         let block = self.block()?;
         Ok(Stmt::While(condition, block))
     }

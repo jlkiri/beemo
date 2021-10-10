@@ -207,16 +207,20 @@ fn number(input: &str) -> Result<ProtoToken> {
 
 fn string(input: &str) -> Result<ProtoToken> {
     let (lquote, _) = char('"')(input)?;
-    let (_body, value) = take_till(|c| c == '"')(lquote)?;
-    let (rquote, _) =
-        char::<_, NomScanError<&str>>('"')(input).or(Err(Failure(NomScanError::custom(
-            0,
+    let (body, value) = take_till(|c| c == '"')(lquote)?;
+    let (rquote, _) = char::<_, NomScanError<&str>>('"')(body).or_else(|_| {
+        let (next, _) = many_till::<_, _, _, (), _, _>(anychar, eof)(body)
+            .expect("FATAL: Impossible to find a span of the invalid string.");
+        let span = input.offset(next) - 1;
+        Err(Failure(NomScanError::custom(
+            span,
             lquote,
             r#"Missing closing quote"#.to_string(),
-            r#"Did you forget '"'?"#.to_string(),
-        ))))?;
+            r#"It looks like you forgot '"' in the end of the string."#.to_string(),
+        )))
+    })?;
     Ok((
-        input,
+        rquote,
         ProtoToken(
             TokenType::String(value.to_string()),
             input,
@@ -380,13 +384,7 @@ fn scan_lines(
         })
         .map_err(|e| {
             let (unscanned, kind): (&str, ErrorKind) = e.error;
-            // Replace tabs with spaces due to miette issues.
-            /* let before = &source[..source.offset(unscanned)];
-            let tab_count = before.matches('\t').count();
-            let spaced_source = source.replace('\t', " ".repeat(4).as_str()).to_string(); */
-            // let global_offset = source.offset(unscanned) + tab_count * 4 - tab_count;
             let global_offset = source.offset(unscanned);
-
             if let ErrorKind::Custom(token_len, desc, help) = kind {
                 dbg!((global_offset, token_len));
                 return BeemoError::ScanError(

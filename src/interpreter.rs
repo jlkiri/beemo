@@ -10,7 +10,11 @@ use crate::{
     scanner::TokenType,
 };
 
-#[derive(Debug)]
+use miette::Diagnostic;
+use thiserror::Error;
+
+#[derive(Debug, Error, Diagnostic)]
+#[error("Interpreter error.")]
 pub enum ErrorKind {
     WrongOperand,
     NotInfixOperator,
