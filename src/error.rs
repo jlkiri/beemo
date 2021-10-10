@@ -1,7 +1,7 @@
 use miette::{self, Diagnostic};
 use thiserror::Error;
 
-use crate::{interpreter, parser::ErrorKind};
+use crate::interpreter;
 
 pub type Result<T> = std::result::Result<T, BeemoError>;
 type Length = usize;

@@ -23,10 +23,9 @@ fn main() -> Result<()> {
     });
     let source = fs::read_to_string(file).expect("Failed reading file.");
     let tokens = scan(&source)?;
-    // dbg!(&tokens);
-    let mut parser = Parser::new(&source, tokens.iter().peekable());
+    let mut parser = Parser::new(&source, tokens);
     let res = parser.parse()?;
-    let mut interpreter = Interpreter::new();
+    let interpreter = Interpreter::new();
     interpreter.interpret(res).expect("derp");
     Ok(())
 }

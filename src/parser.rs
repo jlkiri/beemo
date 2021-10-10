@@ -1,6 +1,6 @@
-use std::iter::Peekable;
-use std::slice::Iter;
+use std::iter::{Enumerate, Peekable};
 use std::time::Instant;
+use std::vec::IntoIter;
 
 use crate::function::{Callable, Function};
 use crate::scanner::TokenType;
@@ -10,7 +10,8 @@ use thiserror::Error;
 
 pub struct Parser<'a> {
     source: &'a str,
-    tokens: Peekable<Iter<'a, Token>>,
+    tokens: Peekable<Enumerate<IntoIter<Token>>>,
+    token_source: Vec<Token>,
 }
 
 type IfBranch = Vec<Stmt>;
@@ -120,12 +121,17 @@ impl Value {
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(source: &'a str, tokens: Peekable<Iter<'a, Token>>) -> Self {
-        Self { source, tokens }
+    pub fn new(source: &'a str, token_source: Vec<Token>) -> Self {
+        let tokens = token_source.clone().into_iter().enumerate().peekable();
+        Self {
+            source,
+            tokens,
+            token_source,
+        }
     }
 
     fn check(&mut self, ty: &TokenType) -> bool {
-        if let Some(token) = self.tokens.peek() {
+        if let Some(token) = self.tokens.peek().map(|t| t.1.clone()) {
             &token.ty == ty
         } else {
             false
@@ -133,7 +139,7 @@ impl<'a> Parser<'a> {
     }
 
     fn read_token(&mut self) -> Option<Token> {
-        self.tokens.next().cloned()
+        self.tokens.next().map(|t| t.1)
     }
 
     fn read_token_if(&mut self, ty: &TokenType) -> Option<Token> {
@@ -165,39 +171,35 @@ impl<'a> Parser<'a> {
 
     fn read_token_if_ident(&mut self) -> Option<String> {
         self.tokens
-            .next_if(|t| matches!(t.ty, TokenType::Identifier(..)))
-            .and_then(|t| match t {
+            .next_if(|t| matches!(t.1.ty, TokenType::Identifier(..)))
+            .and_then(|t| match t.1 {
                 Token { ty, .. } => {
                     Some(ty.string_value().unwrap().to_string()) // Safe unwrap.
                 }
-                _ => unreachable!(),
             })
     }
 
     fn read_token_if_string(&mut self) -> Option<String> {
         self.tokens
-            .next_if(|t| matches!(t.ty, TokenType::String(_)))
-            .and_then(|t| match t {
+            .next_if(|t| matches!(t.1.ty, TokenType::String(_)))
+            .and_then(|t| match t.1 {
                 Token { ty, .. } => Some(ty.string_value().unwrap().to_string()), // Safe unwrap.
-                _ => unreachable!(),
             })
     }
 
     fn read_token_if_keyword(&mut self) -> Option<String> {
         self.tokens
-            .next_if(|t| matches!(t.ty, TokenType::Keyword(_)))
-            .and_then(|t| match t {
+            .next_if(|t| matches!(t.1.ty, TokenType::Keyword(_)))
+            .and_then(|t| match t.1 {
                 Token { ty, .. } => Some(ty.string_value().unwrap().to_string()), // Safe unwrap.
-                _ => unreachable!(),
             })
     }
 
     fn read_token_if_float(&mut self) -> Option<f32> {
         self.tokens
-            .next_if(|t| matches!(t.ty, TokenType::Float(_)))
-            .and_then(|t| match t {
+            .next_if(|t| matches!(t.1.ty, TokenType::Float(_)))
+            .and_then(|t| match t.1 {
                 Token { ty, .. } => Some(ty.num_value().unwrap()), // Safe unwrap.
-                _ => unreachable!(),
             })
     }
 
@@ -222,10 +224,10 @@ impl<'a> Parser<'a> {
     }
 
     fn err(&mut self, kind: ErrorKind) -> BeemoError {
-        let token = self.peek_token().unwrap();
+        let prev = self.previous().unwrap();
         BeemoError::ParserError(
             self.source.to_string(),
-            token.span,
+            prev.span,
             kind.to_string(),
             kind.help().unwrap().to_string(),
         )
@@ -311,7 +313,13 @@ impl<'a> Parser<'a> {
     }
 
     fn peek_token(&mut self) -> Option<Token> {
-        self.tokens.peek().copied().cloned()
+        self.tokens.peek().map(|t| t.1.clone())
+    }
+
+    fn previous(&mut self) -> Option<Token> {
+        let (i, _) = self.tokens.peek().unwrap().clone();
+        let prev = self.token_source[i - 1].clone();
+        Some(prev)
     }
 
     fn call_like(&mut self) -> Result<Expr> {
@@ -356,10 +364,7 @@ impl<'a> Parser<'a> {
             // Do-while loop.
         }
         self.read_token_if(&TokenType::ClosingParen)
-            .ok_or_else(|| {
-                let t = self.peek_token().expect("Unexpected eof.");
-                self.err(ErrorKind::MissingClosingParenInCall)
-            })?;
+            .ok_or(self.err(ErrorKind::MissingClosingParenInCall))?;
         Ok(Expr::Call(callee, arguments))
     }
 
@@ -397,8 +402,6 @@ impl<'a> Parser<'a> {
                 .ok_or(self.err(ErrorKind::MissingClosingParen))?;
             return Ok(Expr::Grouping(Box::new(group)));
         }
-
-        let p = self.peek_token();
 
         match self.read_token_if_ident() {
             Some(v) => {
@@ -472,9 +475,10 @@ impl<'a> Parser<'a> {
     fn assignment(&mut self) -> Result<Expr> {
         let rvalue = self.logical()?;
         if self.read_token_if(&TokenType::Assign).is_some() {
-            match self.read_token_if_ident() {
-                Some(lvalue) => Ok(Expr::Assignment(lvalue, Box::new(rvalue))),
-                None => Err(self.err(ErrorKind::NotAssignable))?,
+            let assignee = self.expression()?;
+            match assignee {
+                Expr::Variable(var) => Ok(Expr::Assignment(var, Box::new(rvalue))),
+                _ => Err(self.err(ErrorKind::NotAssignable))?,
             }
         } else {
             Ok(rvalue)

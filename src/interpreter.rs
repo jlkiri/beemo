@@ -35,7 +35,7 @@ pub struct Interpreter<'a> {
 #[derive(Debug, Clone)]
 struct TimeStart;
 impl Callable for TimeStart {
-    fn call(&self, interpreter: &Interpreter, arguments: Vec<Value>) -> Result<Value> {
+    fn call(&self, interpreter: &Interpreter, _arguments: Vec<Value>) -> Result<Value> {
         interpreter
             .globals
             .define("__timestart".to_string(), Value::Instant(Instant::now()));
@@ -306,12 +306,6 @@ impl Interpreter<'_> {
         env.vec_push(&array, val.clone())
             .ok_or(BeemoError::RuntimeError(ErrorKind::VariableUndefined))?;
         Ok(val)
-    }
-
-    fn eval_push_var_expr(&self, array: String, var: Value, env: &Environment) -> Result<Value> {
-        env.vec_push(&array, var.clone())
-            .ok_or(BeemoError::RuntimeError(ErrorKind::VariableUndefined))?;
-        Ok(var)
     }
 
     pub fn eval_expr(&self, expr: Expr, env: &Environment) -> Result<Value> {

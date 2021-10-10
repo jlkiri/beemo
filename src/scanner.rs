@@ -207,7 +207,7 @@ fn number(input: &str) -> Result<ProtoToken> {
 
 fn string(input: &str) -> Result<ProtoToken> {
     let (lquote, _) = char('"')(input)?;
-    let (body, value) = take_till(|c| c == '"')(lquote)?;
+    let (_body, value) = take_till(|c| c == '"')(lquote)?;
     let (rquote, _) =
         char::<_, NomScanError<&str>>('"')(input).or(Err(Failure(NomScanError::custom(
             0,
