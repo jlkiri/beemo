@@ -168,7 +168,7 @@ fn identifier(input: &str) -> Result<ProtoToken> {
 fn indentation<'a>(
     input: &'a str,
     counter: &mut IndentationCounter,
-) -> Result<'a, Vec<ProtoToken>> {
+) -> Result<'a, Vec<ProtoToken<'a>>> {
     let (rest, tabs) = many0(tab)(input)?;
     let mut indent_tokens = vec![];
     let indent_level = tabs.len() as isize;
@@ -183,7 +183,13 @@ fn indentation<'a>(
     }
     indent_tokens.reverse();
     counter.current = indent_level;
-    Ok((rest, indent_tokens))
+    Ok((
+        rest,
+        indent_tokens
+            .into_iter()
+            .map(|tt| ProtoToken(tt, input, 1))
+            .collect(),
+    ))
 }
 
 fn number(input: &str) -> Result<ProtoToken> {
@@ -343,7 +349,7 @@ fn tokens(input: &str) -> Result<Vec<ProtoToken>> {
 fn scan_lines(
     source: &str,
     counter: &mut IndentationCounter,
-) -> std::result::Result<Vec<TokenType>, BeemoError> {
+) -> std::result::Result<Vec<Token>, BeemoError> {
     let indent = |i| indentation(i, counter);
     let full_line = map(pair(indent, tokens), |(mut pre, mut after)| {
         pre.append(&mut after);
@@ -352,7 +358,19 @@ fn scan_lines(
 
     all_consuming(many_till(full_line, eof))(source)
         .finish()
-        .map(|(_, (parsed_lines, _))| parsed_lines.into_iter().flatten().collect())
+        .map(|(_, (parsed_lines, _))| {
+            parsed_lines
+                .into_iter()
+                .flatten()
+                .map(|ProtoToken(tt, input, len)| {
+                    let offset = source.offset(input);
+                    Token {
+                        ty: tt,
+                        span: (offset, len),
+                    }
+                })
+                .collect()
+        })
         .map_err(|e| {
             let (unscanned, kind): (&str, ErrorKind) = e.error;
             // Replace tabs with spaces due to miette issues.
@@ -384,10 +402,16 @@ pub fn scan(source: &str) -> std::result::Result<Vec<Token>, BeemoError> {
     let mut tokens = scan_lines(&source, &mut c)?;
     // dbg!(&c);
     for _ in 0..c.current {
-        tokens.push(TokenType::Dedent);
+        tokens.push(Token {
+            ty: TokenType::Dedent,
+            span: (source.len() - 2, 1),
+        });
     }
-    tokens.push(TokenType::Eof);
-    Ok(tokens.into_iter().map(|t| Token { ty: t }).collect())
+    tokens.push(Token {
+        ty: TokenType::Eof,
+        span: (source.len() - 1, 1),
+    });
+    Ok(tokens)
 }
 
 #[cfg(test)]
@@ -395,8 +419,8 @@ mod tests {
     use super::*;
 
     macro_rules! assert_success {
-        ($source:expr, $exp:expr) => {
-            assert_eq!($source, Ok(("", $exp)));
+        ($source:expr, $pattern:pat_param) => {
+            assert!(matches!($source, Ok((_, ProtoToken(pattern, ..)))));
         };
     }
 
@@ -413,21 +437,28 @@ mod tests {
             identifier("multiply"),
             TokenType::Identifier(String::from("multiply"))
         );
-        assert!(identifier("2multiply").is_err());
-        assert!(identifier("-multiply").is_err());
+        assert!(identifier("2multiply ").is_err());
+        assert!(identifier("-multiply ").is_err());
     }
 
     #[test]
     fn test_keyword() {
-        assert_success!(keyword("if"), TokenType::Keyword("if".into()));
-        assert_success!(keyword("return"), TokenType::Keyword("return".into()));
+        assert_success!(keyword("if"), TokenType::Keyword(String::from("if")));
+        assert_success!(
+            keyword("return"),
+            TokenType::Keyword(String::from("return"))
+        );
     }
 
     #[test]
     fn test_indentation() {
         let mut c = IndentationCounter { current: 0 };
         let source = "a\n\ta\n\t\ta\n\ta\na\n";
-        let res = scan_lines(source, &mut c).unwrap();
+        let res = scan_lines(source, &mut c)
+            .unwrap()
+            .into_iter()
+            .map(|t| t.ty)
+            .collect::<Vec<_>>();
         assert_eq!(
             res,
             vec![

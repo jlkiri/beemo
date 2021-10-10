@@ -127,7 +127,7 @@ impl<'a> Parser<'a> {
         self.tokens
             .next_if(|t| matches!(t.ty, TokenType::Identifier(..)))
             .and_then(|t| match t {
-                Token { ty } => {
+                Token { ty, .. } => {
                     Some(ty.string_value().unwrap().to_string()) // Safe unwrap.
                 }
                 _ => unreachable!(),
@@ -138,7 +138,7 @@ impl<'a> Parser<'a> {
         self.tokens
             .next_if(|t| matches!(t.ty, TokenType::String(_)))
             .and_then(|t| match t {
-                Token { ty } => Some(ty.string_value().unwrap().to_string()), // Safe unwrap.
+                Token { ty, .. } => Some(ty.string_value().unwrap().to_string()), // Safe unwrap.
                 _ => unreachable!(),
             })
     }
@@ -147,7 +147,7 @@ impl<'a> Parser<'a> {
         self.tokens
             .next_if(|t| matches!(t.ty, TokenType::Keyword(_)))
             .and_then(|t| match t {
-                Token { ty } => Some(ty.string_value().unwrap().to_string()), // Safe unwrap.
+                Token { ty, .. } => Some(ty.string_value().unwrap().to_string()), // Safe unwrap.
                 _ => unreachable!(),
             })
     }
@@ -233,7 +233,7 @@ impl<'a> Parser<'a> {
         let mut lhs = self.unary()?;
         loop {
             let op = match self.peek_token() {
-                Some(Token { ty }) if self.is_op(&ty) => ty,
+                Some(Token { ty, .. }) if self.is_op(&ty) => ty,
                 _ => break,
             };
             let (lbp, rbp) = self.infix_binding_power(&op);
@@ -447,6 +447,7 @@ impl<'a> Parser<'a> {
         match self.peek_token() {
             Some(Token {
                 ty: TokenType::Keyword(k),
+                ..
             }) if k == "else" => {
                 self.read_token();
                 self.read_token_if(&TokenType::Colon)
