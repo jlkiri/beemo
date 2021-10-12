@@ -5,7 +5,7 @@ declaration := func
 
 func := identifier ('(' params? ')')? ':' block
 
-statement := return | print | condition | for | while | push
+statement := return | print | condition | while
 return := 'return' expr
 print := 'print' expr
 condition := 'if' expr ':' block ('else' ':' block)?
