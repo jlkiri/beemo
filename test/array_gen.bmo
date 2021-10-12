@@ -1,6 +1,3 @@
-log_number(num):
-	print num
-
 main:
 	0 -> n
 	{} -> arr

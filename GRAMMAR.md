@@ -1,3 +1,5 @@
+# Beemo grammar
+
 ```
 declaration := func
 
@@ -20,6 +22,8 @@ call-like := primary '[' term ']' | call
 call := primary ('(' arguments? ')')*
 primary := identifier | 'true' | 'false' | number ('>>' identifier) | array | '(' expr ')'
 ```
+
+### Utility rules
 
 ```
 block := indent statement* dedent

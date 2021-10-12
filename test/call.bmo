@@ -1,8 +1,0 @@
-add_self_and_one(x):
-	x + x + 1
-
-double(x):
-	x * x
-
-main:
-	print add_self_and_one(double(3 + 5 * 7 + 1) + 4) - 1397 / 2

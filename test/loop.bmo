@@ -1,6 +1,0 @@
-yeah_loop:
-	while 1 < 2:
-		print "YEEEEAHH"
-
-main:
-	yeah_loop()
