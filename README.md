@@ -30,3 +30,13 @@ main:
 
 * `git clone` this repository
 * `cargo run -q test/[test_name].bmo`
+
+## Error examples
+
+![ident](pics/ident.jpeg)
+
+![quote](pics/quote.png)
+
+![undefined](pics/undefined.png)
+
+![colon](pics/colon.png)
