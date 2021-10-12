@@ -6,6 +6,10 @@ Unremarkable Python-inspired programming language with remarkably good errors.
 
 Read [GRAMMAR.md](GRAMMAR.md)
 
+## Background
+
+This language is an experiment in the design of an interpreter with extremely empathetic feedback. The goal is to become a language that is learnable solely from error messages.
+
 ## Feel
 
 ```
