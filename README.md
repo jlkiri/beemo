@@ -33,7 +33,7 @@ main:
 ## Usage
 
 * `git clone` this repository
-* `cargo run -q test/[test_name].bmo`
+* `cargo run -q examples/[example_name].bmo`
 
 ## Error examples
 
