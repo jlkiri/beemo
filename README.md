@@ -19,7 +19,7 @@ binary_search(array, num):
 	while lo <= hi:
 		lo + (hi - lo) / 2 -> mid
 		if array[mid] == num:
-		return mid
+			return mid
 		if array[mid] > num:
 			mid -> hi
 		if array[mid] < num:
