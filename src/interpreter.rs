@@ -25,7 +25,7 @@ pub enum ErrorKind {
     NothingReturned,
     NotComparable,
     #[error("Use of undefined variable.")]
-    #[diagnostic(help("{0} is not undefined."))]
+    #[diagnostic(help("{0} is not defined."))]
     VariableUndefined(String),
     ReturnNotExpression,
     NotCallable,
