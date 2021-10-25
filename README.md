@@ -44,3 +44,7 @@ main:
 ![undefined](pics/undefined.png)
 
 ![colon](pics/colon.png)
+
+## License
+
+MIT
